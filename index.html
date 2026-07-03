@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EAE6DD">
+<title>Workout log</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #EAE6DD;
+    --card: #F7F4EC;
+    --field: #FFFFFF;
+    --border: #E4E0D4;
+    --text: #2B2925;
+    --text-secondary: #7A776D;
+    --text-muted: #9C988A;
+    --push: #B98B3E;
+    --pull: #5C6670;
+    --legs: #74845A;
+    --flag-steady: #B7DDA8;
+    --flag-active: #4C8A3E;
+    --danger: #B84C3C;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    padding-bottom: 40px;
+  }
+  .page {
+    max-width: 460px;
+    margin: 0 auto;
+    padding: 20px 16px 8px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 18px;
+  }
+  .session-label {
+    font-family: 'Oswald', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+  .session-date {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .card {
+    background: var(--card);
+    border-radius: 0 12px 12px 0;
+    border-left: 4px solid var(--cat-color, var(--push));
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .card-left {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .icon-slot {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--field);
+    border: 1.5px dashed var(--border);
+    flex-shrink: 0;
+  }
+  .name {
+    font-family: 'Oswald', sans-serif;
+    font-size: 16px;
+    letter-spacing: 0.3px;
+    color: var(--text);
+  }
+  .baseline {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+  }
+  .baseline .weight-flagged {
+    color: var(--danger);
+    font-weight: 500;
+  }
+  .move-up-tag {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--flag-active);
+    margin-left: 6px;
+  }
+  .flag-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    padding: 0;
+    flex-shrink: 0;
+    cursor: pointer;
+    background: var(--flag-steady);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .flag-btn.active {
+    background: var(--flag-active);
+  }
+  .fields {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .field {
+    flex: 1;
+    background: var(--field);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+  }
+  .field label {
+    display: block;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .field input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    color: var(--text);
+    padding: 0;
+    outline: none;
+  }
+  .legend {
+    display: flex;
+    gap: 14px;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin: 16px 0 20px;
+    flex-wrap: wrap;
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .save-btn {
+    width: 100%;
+    background: var(--push);
+    color: var(--card);
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .save-btn:active {
+    opacity: 0.85;
+  }
+  .saved-msg {
+    text-align: center;
+    font-size: 12px;
+    color: var(--legs);
+    margin-top: 10px;
+    height: 16px;
+  }
+  .history-toggle {
+    text-align: center;
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .history {
+    margin-top: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .history-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <span class="session-label" id="session-label">Session 1</span>
+    <span class="session-date" id="session-date"></span>
+  </div>
+
+  <div id="cards"></div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--push)"></span>push</span>
+    <span><span class="dot" style="background:var(--pull)"></span>pull</span>
+    <span><span class="dot" style="background:var(--legs)"></span>legs</span>
+  </div>
+
+  <button class="save-btn" id="save-btn">Save session</button>
+  <div class="saved-msg" id="saved-msg"></div>
+
+  <div class="history-toggle" id="history-toggle">Show history</div>
+  <div class="history" id="history" style="display:none;"></div>
+</div>
+
+<script>
+const EXERCISES = [
+  { id: 'bench_press', name: 'Dumbbell bench press', category: 'push' },
+  { id: 'row', name: 'Single-arm dumbbell row', category: 'pull' },
+  { id: 'leg_extension', name: 'Leg extension', category: 'legs' }
+];
+
+const CATEGORY_COLOR = {
+  push: 'var(--push)',
+  pull: 'var(--pull)',
+  legs: 'var(--legs)'
+};
+
+function loadSessions() {
+  try {
+    return JSON.parse(localStorage.getItem('wl_sessions') || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveSessions(sessions) {
+  localStorage.setItem('wl_sessions', JSON.stringify(sessions));
+}
+
+function loadFlags() {
+  try {
+    return JSON.parse(localStorage.getItem('wl_flags') || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveFlags(flags) {
+  localStorage.setItem('wl_flags', JSON.stringify(flags));
+}
+
+function getLastEntry(sessions, exerciseId) {
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    const entry = sessions[i].entries[exerciseId];
+    if (entry) return entry;
+  }
+  return null;
+}
+
+let sessions = loadSessions();
+let flags = loadFlags();
+
+function render() {
+  const cardsEl = document.getElementById('cards');
+  cardsEl.innerHTML = '';
+
+  EXERCISES.forEach(ex => {
+    const last = getLastEntry(sessions, ex.id);
+    const isFlagged = !!flags[ex.id];
+    const lastWeight = last ? last.weight : '';
+    const lastReps = last ? last.reps : '';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.setProperty('--cat-color', CATEGORY_COLOR[ex.category]);
+
+    const baselineText = last
+      ? `last: <span class="${isFlagged ? 'weight-flagged' : ''}">${last.weight} kg</span> — ${last.reps} reps`
+      : 'no sessions logged yet';
+
+    card.innerHTML = `
+      <div class="card-top">
+        <div class="card-left">
+          <div class="icon-slot"></div>
+          <div>
+            <div class="name">${ex.name}</div>
+            <div class="baseline">${baselineText}${isFlagged ? '<span class="move-up-tag">move up</span>' : ''}</div>
+          </div>
+        </div>
+        <button class="flag-btn ${isFlagged ? 'active' : ''}" data-id="${ex.id}" aria-label="Mark ready to increase weight">
+          ${isFlagged
+            ? '<svg width="16" height="16" viewBox="0 0 20 20"><path d="M10 15V6M6 10L10 5L14 10" stroke="#F7F4EC" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'
+            : ''}
+        </button>
+      </div>
+      <div class="fields">
+        <div class="field">
+          <label>weight (kg)</label>
+          <input type="number" inputmode="decimal" data-id="${ex.id}" data-field="weight" value="${lastWeight}">
+        </div>
+        <div class="field">
+          <label>reps</label>
+          <input type="text" inputmode="text" data-id="${ex.id}" data-field="reps" value="${lastReps}">
+        </div>
+      </div>
+    `;
+    cardsEl.appendChild(card);
+  });
+
+  cardsEl.querySelectorAll('.flag-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      flags[id] = !flags[id];
+      saveFlags(flags);
+      render();
+    });
+  });
+
+  updateSessionLabel();
+}
+
+function updateSessionLabel() {
+  document.getElementById('session-label').textContent = `Session ${sessions.length + 1}`;
+  document.getElementById('session-date').textContent = new Date().toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric'
+  });
+}
+
+document.getElementById('save-btn').addEventListener('click', () => {
+  const entries = {};
+  EXERCISES.forEach(ex => {
+    const weightInput = document.querySelector(`input[data-id="${ex.id}"][data-field="weight"]`);
+    const repsInput = document.querySelector(`input[data-id="${ex.id}"][data-field="reps"]`);
+    const weight = parseFloat(weightInput.value) || 0;
+    const reps = repsInput.value.trim();
+
+    const previousLast = getLastEntry(sessions, ex.id);
+    entries[ex.id] = { weight, reps };
+
+    if (flags[ex.id] && previousLast && weight > previousLast.weight) {
+      flags[ex.id] = false;
+    }
+  });
+
+  sessions.push({
+    date: new Date().toISOString(),
+    entries
+  });
+
+  saveSessions(sessions);
+  saveFlags(flags);
+
+  const msg = document.getElementById('saved-msg');
+  msg.textContent = 'Session saved';
+  setTimeout(() => { msg.textContent = ''; }, 2000);
+
+  render();
+  renderHistory();
+});
+
+function renderHistory() {
+  const historyEl = document.getElementById('history');
+  if (sessions.length === 0) {
+    historyEl.innerHTML = '<div class="history-row">No sessions yet</div>';
+    return;
+  }
+  const rows = sessions.slice().reverse().map(s => {
+    const dateStr = new Date(s.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const parts = EXERCISES.map(ex => {
+      const e = s.entries[ex.id];
+      return e ? `${ex.name.split(' ')[0]} ${e.weight}kg` : '';
+    }).filter(Boolean).join(' · ');
+    return `<div class="history-row"><span>${dateStr}</span><span>${parts}</span></div>`;
+  }).join('');
+  historyEl.innerHTML = rows;
+}
+
+document.getElementById('history-toggle').addEventListener('click', () => {
+  const historyEl = document.getElementById('history');
+  const toggle = document.getElementById('history-toggle');
+  const showing = historyEl.style.display !== 'none';
+  historyEl.style.display = showing ? 'none' : 'block';
+  toggle.textContent = showing ? 'Show history' : 'Hide history';
+  if (!showing) renderHistory();
+});
+
+render();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
