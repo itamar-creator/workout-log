@@ -1160,6 +1160,12 @@ function attachDragHandlers(row, listEl) {
 
     row.classList.add('dragging-placeholder');
 
+    // Once we've committed to a drag, stop the browser from treating
+    // finger movement as a page scroll (it was pan-y up to this point
+    // so a normal swipe still scrolls the list when not long-pressing).
+    row.style.touchAction = 'none';
+    document.body.style.touchAction = 'none';
+
     dragState = {
       row, listEl, ghost,
       offsetX: startX - rect.left,
@@ -1218,6 +1224,8 @@ function attachDragHandlers(row, listEl) {
     if (!dragState || dragState.row !== row) return;
     dragState.ghost.remove();
     row.classList.remove('dragging-placeholder');
+    row.style.touchAction = '';
+    document.body.style.touchAction = '';
     const newActiveOrder = Array.from(listEl.children).map(r => r.dataset.id);
     const hiddenIds = getHiddenExercises().map(e => e.id);
     exerciseOrder = [...newActiveOrder, ...hiddenIds];
@@ -1233,6 +1241,7 @@ function renderManageExercisesScreen() {
   // Defensive cleanup: remove any stray ghosts/drag state from an interrupted
   // gesture on a previous visit, so nothing can accumulate indefinitely.
   document.querySelectorAll('.drag-ghost').forEach(g => g.remove());
+  document.body.style.touchAction = '';
   dragState = null;
 
   const activeList = document.getElementById('active-exercise-list');
