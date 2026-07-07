@@ -310,25 +310,6 @@
   .splash.show { opacity: 1; pointer-events: all; }
   .splash-msg { font-size: 26px; text-align: center; padding: 0 40px; color: var(--text); z-index: 2; position: relative; }
 
-  #startup-overlay {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200;
-    transition: opacity 0.35s ease;
-  }
-  #startup-overlay img {
-    width: 96px;
-    height: 96px;
-    border-radius: 22px;
-  }
-  #startup-overlay.hide {
-    opacity: 0;
-    pointer-events: none;
-  }
   .confetti-layer {
     position: absolute;
     inset: 0;
@@ -358,10 +339,6 @@
 <script src="vendor/xlsx.full.min.js"></script>
 </head>
 <body>
-
-<div id="startup-overlay">
-  <img src="icons/icon-512.png" alt="">
-</div>
 
 <div class="page">
 
@@ -1503,10 +1480,6 @@ window.addEventListener('popstate', () => {
     if (prevScreen === 'screen-manage-exercises') renderManageExercisesScreen();
   }
 });
-
-setTimeout(() => {
-  document.getElementById('startup-overlay').classList.add('hide');
-}, 1000);
 
 autoSyncOnLoad();
 
