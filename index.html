@@ -390,7 +390,7 @@
     <div class="back-link" id="btn-back-settings-1">&larr; back</div>
     <div class="header"><span class="session-label">Backups</span></div>
     <button class="big-btn primary" id="export-btn" style="margin-top:10px;">Export exercises to Excel</button>
-    <button class="big-btn secondary" id="restore-btn" style="margin-top:10px;">Restore exercises from backup</button>
+    <button class="big-btn secondary" id="restore-btn" style="margin-top:10px;">Restore exercises from server</button>
     <div style="height:90px;"></div>
     <button id="export-all-btn" style="display:block;margin:0 auto;padding:10px 18px;border-radius:10px;border:1.5px solid #8A5A3A;background:transparent;color:#8A5A3A;font-family:'Sriracha',cursive;font-size:13px;">Export all app data</button>
   </div>
@@ -1385,24 +1385,22 @@ function buildExportFile() {
     return;
   }
 
+  // CSV, not xlsx: Chrome's Web Share API only shares a fixed allow-list of
+  // file types (PDF, images, audio, video, plain text/CSV) — .xlsx isn't on
+  // it and will always be rejected. CSV still opens fine in Excel/Sheets.
   const worksheet = XLSX.utils.json_to_sheet(rows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'LogIt');
-  worksheet['!cols'] = [
-    { wch: 12 }, { wch: 28 }, { wch: 12 }, { wch: 10 }
-  ];
+  const csv = XLSX.utils.sheet_to_csv(worksheet);
 
   const today = new Date().toISOString().split('T')[0];
-  const filename = `workout-log-${today}.xlsx`;
-  const arrayBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-  const blob = new Blob([arrayBuffer], { type: mimeType });
+  const filename = `workout-log-${today}.csv`;
+  const mimeType = 'text/csv';
+  const blob = new Blob([csv], { type: mimeType });
   preparedExportFile = new File([blob], filename, { type: mimeType });
 }
 
 async function exportToExcel() {
   // File is already built (see btn-backups handler below) so this handler
-  // does nothing but share immediately — no computation between tap and share().
+  // does nothing but share/download immediately.
   if (!preparedExportFile) {
     buildExportFile(); // fallback, in case this screen was reached some other way
   }
@@ -1413,42 +1411,17 @@ async function exportToExcel() {
   }
 
   const file = preparedExportFile;
-  let shared = false;
 
-  if (navigator.share) {
-    const shareData = { files: [file], title: 'LogIt export', text: 'My LogIt export' };
-    let canShareFiles = 'unknown';
-    if (navigator.canShare) {
-      canShareFiles = navigator.canShare(shareData);
-    }
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
-      await navigator.share(shareData);
-      shared = true;
+      await navigator.share({ files: [file], title: 'LogIt export', text: 'My LogIt export' });
+      return;
     } catch (err) {
       if (err.name === 'AbortError') return; // user cancelled — don't also trigger a download
-
-      // diagnostic probe: does plain text-only sharing work at all on this device?
-      let textShareResult = 'not tested';
-      try {
-        await navigator.share({ title: 'LogIt test', text: 'Text-only share test' });
-        textShareResult = 'SUCCEEDED (so file-sharing specifically is the problem)';
-      } catch (textErr) {
-        if (textErr.name === 'AbortError') {
-          textShareResult = 'cancelled by user (inconclusive)';
-        } else {
-          textShareResult = `ALSO FAILED: ${textErr.name} — ${textErr.message}`;
-        }
-      }
-
-      alert(`Share didn't open — falling back to download.\n\ncanShare: ${canShareFiles}\nfile share error: ${err.name} — ${err.message}\n\ntext-only share test: ${textShareResult}`);
+      // any other failure: fall through to plain download below
     }
-  } else {
-    alert('This browser has no navigator.share at all — falling back to download.');
   }
 
-  if (shared) return;
-
-  // fallback: plain download (desktop browsers, or unsupported devices)
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url;
