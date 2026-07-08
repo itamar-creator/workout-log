@@ -613,6 +613,7 @@ async function autoSyncOnLoad() {
   }
 }
 let sessionFlags = {};
+let sessionDraft = loadJSON('wl_session_draft', {}); // in-progress inputs, keyed by exercise id: {weight, reps}
 
 function getLastEntry(exId) {
   for (let i = sessions.length - 1; i >= 0; i--) {
@@ -704,8 +705,9 @@ function renderSessionScreen() {
   getActiveExercises().forEach(ex => {
     const last = getLastEntry(ex.id);
     const wasFlagged = !!flags[ex.id];
-    const lastWeight = last ? last.weight : '';
-    const lastReps = last ? last.reps : '';
+    const draft = sessionDraft[ex.id];
+    const lastWeight = draft ? draft.weight : (last ? last.weight : '');
+    const lastReps = draft ? draft.reps : (last ? last.reps : '');
     const iconSrc = resolveIconSrc(ex);
 
     const card = document.createElement('div');
@@ -749,6 +751,16 @@ function renderSessionScreen() {
     });
   });
 
+  cardsEl.querySelectorAll('input[data-field]').forEach(input => {
+    input.addEventListener('input', () => {
+      const id = input.dataset.id;
+      const field = input.dataset.field;
+      sessionDraft[id] = sessionDraft[id] || {};
+      sessionDraft[id][field] = input.value;
+      saveJSON('wl_session_draft', sessionDraft);
+    });
+  });
+
   updateSessionLabel();
 }
 
@@ -785,6 +797,8 @@ document.getElementById('save-btn').addEventListener('click', () => {
   flags = newFlags;
   saveJSON('wl_sessions', sessions);
   saveJSON('wl_flags', flags);
+  sessionDraft = {};
+  saveJSON('wl_session_draft', sessionDraft);
   backupToServer();
 
   showSplash();
@@ -803,9 +817,11 @@ function resetSessions() {
   }
   sessions = [];
   flags = {};
+  sessionDraft = {};
 
   saveJSON('wl_sessions', sessions);
   saveJSON('wl_flags', flags);
+  saveJSON('wl_session_draft', sessionDraft);
   saveJSON('wl_history_archive', historyArchive);
   backupToServer();
 
