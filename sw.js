@@ -1,7 +1,7 @@
-const CACHE = 'workout-log-v4';
+const CACHE = 'workout-log-v6';
 const ASSETS = [
   './', './index.html', './manifest.json',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-512-maskable.png',
+  'icons/icon-192.png', 'icons/icon-512.png',
   'icons/bicep_curl.png', 'icons/chest_together.png', 'icons/dumbbell_back_pull.png',
   'icons/dumbbell_chest_press.png', 'icons/leg_extension.png', 'icons/open_chest_fly.png',
   'icons/overhead_press.png', 'icons/pullup.png', 'icons/rear_delt_fly.png', 'icons/squat.png',
@@ -26,7 +26,14 @@ self.addEventListener('activate', event => {
 
 // Stale-while-revalidate: serve cached content instantly, but always
 // fetch a fresh copy in the background and update the cache for next time.
+// Only applies to GET requests for our own origin — POST requests (like
+// the backup API) can't be cached at all (the Cache API only supports GET),
+// and cross-origin requests were never meant to be cached here anyway.
 self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) {
+    return; // let the browser handle it normally, untouched
+  }
+
   event.respondWith(
     caches.open(CACHE).then(cache =>
       cache.match(event.request).then(cachedResponse => {
