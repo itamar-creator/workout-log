@@ -62,6 +62,13 @@
   }
   .big-btn.primary { border-left: 6px solid var(--push); }
   .big-btn.secondary { border-left: 6px solid var(--pull); }
+  .btn-hint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    padding: 0 20px;
+  }
 
   /* Session header */
   .header {
@@ -391,7 +398,9 @@
     <div class="header"><span class="session-label">Backups</span></div>
     <button class="big-btn primary" id="export-btn" style="margin-top:10px;">Export exercises to Excel</button>
     <button class="big-btn secondary" id="restore-btn" style="margin-top:10px;">Restore exercises from server</button>
-    <button id="restore-previous-btn" style="display:block;margin:14px auto 0;padding:8px 16px;border-radius:10px;border:1.5px solid #8A5A3A;background:transparent;color:#8A5A3A;font-family:'Sriracha',cursive;font-size:13px;">Undo last save/reset</button>
+    <div class="btn-hint">For getting data onto new device or after reinstalling app</div>
+    <button class="big-btn secondary" id="restore-previous-btn" style="margin-top:14px;">Undo last save/reset</button>
+    <div class="btn-hint">For undoing accidental reset or save, right after it happens</div>
     <div style="height:90px;"></div>
     <button id="export-all-btn" style="display:block;margin:0 auto;padding:10px 18px;border-radius:10px;border:1.5px solid #8A5A3A;background:transparent;color:#8A5A3A;font-family:'Sriracha',cursive;font-size:13px;">Export all app data</button>
   </div>
