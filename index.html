@@ -391,6 +391,7 @@
     <div class="header"><span class="session-label">Backups</span></div>
     <button class="big-btn primary" id="export-btn" style="margin-top:10px;">Export exercises to Excel</button>
     <button class="big-btn secondary" id="restore-btn" style="margin-top:10px;">Restore exercises from server</button>
+    <button id="restore-previous-btn" style="display:block;margin:14px auto 0;padding:8px 16px;border-radius:10px;border:1.5px solid #8A5A3A;background:transparent;color:#8A5A3A;font-family:'Sriracha',cursive;font-size:13px;">Undo last save/reset</button>
     <div style="height:90px;"></div>
     <button id="export-all-btn" style="display:block;margin:0 auto;padding:10px 18px;border-radius:10px;border:1.5px solid #8A5A3A;background:transparent;color:#8A5A3A;font-family:'Sriracha',cursive;font-size:13px;">Export all app data</button>
   </div>
@@ -568,6 +569,44 @@ async function restoreFromServer() {
     saveJSON('wl_exercise_order', exerciseOrder);
     saveJSON('wl_history_archive', historyArchive);
     alert('Restore complete.');
+    renderHistoryScreen();
+  } catch (err) {
+    alert('Restore failed — check your connection and try again.');
+    console.warn('Restore failed:', err);
+  }
+}
+
+async function restorePreviousFromServer() {
+  if (BACKUP_URL.includes('REPLACE-WITH')) {
+    alert('Backup server isn\'t configured yet.');
+    return;
+  }
+  const confirmed = confirm('This will replace your current data with the backup from before your most recent save/reset. Use this to undo an accidental reset. Continue?');
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`${BACKUP_URL}/restore-previous`, {
+      headers: { 'X-Auth-Token': AUTH_TOKEN }
+    });
+    if (!res.ok) throw new Error('Restore request failed');
+    const data = await res.json();
+    if (!data.sessions && !data.flags) {
+      alert('No previous backup is available to restore.');
+      return;
+    }
+    sessions = data.sessions || [];
+    flags = data.flags || {};
+    customExercises = data.customExercises || [];
+    exerciseMeta = data.exerciseMeta || {};
+    exerciseOrder = data.exerciseOrder || null;
+    historyArchive = data.historyArchive || [];
+    saveJSON('wl_sessions', sessions);
+    saveJSON('wl_flags', flags);
+    saveJSON('wl_custom_exercises', customExercises);
+    saveJSON('wl_exercise_meta', exerciseMeta);
+    saveJSON('wl_exercise_order', exerciseOrder);
+    saveJSON('wl_history_archive', historyArchive);
+    alert('Restored the previous backup.');
     renderHistoryScreen();
   } catch (err) {
     alert('Restore failed — check your connection and try again.');
@@ -1449,6 +1488,7 @@ async function exportToExcel() {
 document.getElementById('export-btn').addEventListener('pointerdown', buildExportFile);
 document.getElementById('export-btn').addEventListener('click', exportToExcel);
 document.getElementById('restore-btn').addEventListener('click', restoreFromServer);
+document.getElementById('restore-previous-btn').addEventListener('click', restorePreviousFromServer);
 document.getElementById('btn-back-title').addEventListener('click', () => history.back());
 document.getElementById('btn-back-title-2').addEventListener('click', () => history.back());
 
