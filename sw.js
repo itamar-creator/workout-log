@@ -1,4 +1,4 @@
-const CACHE = 'workout-log-v7';
+const CACHE = 'workout-log-v8';
 const ASSETS = [
   './', './index.html', './manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png',
@@ -9,8 +9,7 @@ const ASSETS = [
   'vendor/xlsx.full.min.js',
   'sounds/button-press.mp3',
   'sounds/reward/reward-1.mp3', 'sounds/reward/reward-2.mp3', 'sounds/reward/reward-3.mp3',
-  'sounds/reward/reward-4.mp3', 'sounds/reward/reward-5.mp3', 'sounds/reward/reward-6.mp3',
-  'sounds/reward/reward-7.mp3'
+  'sounds/reward/reward-4.mp3', 'sounds/reward/reward-5.mp3', 'sounds/reward/reward-6.mp3'
 ];
 
 self.addEventListener('install', event => {

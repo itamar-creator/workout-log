@@ -844,8 +844,7 @@ const REWARD_SOUNDS = [
   'sounds/reward/reward-3.mp3',
   'sounds/reward/reward-4.mp3',
   'sounds/reward/reward-5.mp3',
-  'sounds/reward/reward-6.mp3',
-  'sounds/reward/reward-7.mp3'
+  'sounds/reward/reward-6.mp3'
 ];
 const rewardAudioPool = REWARD_SOUNDS.map(src => {
   const a = new Audio(src);
@@ -1188,7 +1187,7 @@ let historyViewMode = 'month';
 
 function sparklineSVG(points, maxLabels) {
   if (points.length < 2) return '<div style="font-size:12px;color:var(--text-secondary);">not enough data yet</div>';
-  const w = 260, h = 58, padX = 6, padTop = 16, padBottom = 16;
+  const w = 260, h = 68, padX = 6, padTop = 22, padBottom = 20;
   const values = points.map(p => p.value);
   const min = Math.min(...values), max = Math.max(...values);
   const range = max - min || 1;
@@ -1206,7 +1205,7 @@ function sparklineSVG(points, maxLabels) {
 
   const dots = labelIdx.map(i => {
     const c = coords[i];
-    return `<circle cx="${c.x}" cy="${c.y}" r="2.5" fill="currentColor"/>`;
+    return `<circle cx="${c.x}" cy="${c.y}" r="3" fill="currentColor"/>`;
   }).join('');
 
   const labels = labelIdx.map(i => {
@@ -1215,8 +1214,8 @@ function sparklineSVG(points, maxLabels) {
     const isLast = i === points.length - 1;
     const anchor = isFirst ? 'start' : isLast ? 'end' : 'middle';
     return `
-      <text x="${c.x}" y="${padTop - 5}" font-size="9.5" fill="currentColor" text-anchor="${anchor}">${c.value}</text>
-      <text x="${c.x}" y="${h - 3}" font-size="8.5" fill="currentColor" opacity="0.6" text-anchor="${anchor}">${formatShortDate(c.date)}</text>
+      <text x="${c.x}" y="${padTop - 7}" font-size="13" fill="currentColor" text-anchor="${anchor}">${c.value}</text>
+      <text x="${c.x}" y="${h - 4}" font-size="10.5" fill="currentColor" opacity="0.6" text-anchor="${anchor}">${formatShortDate(c.date)}</text>
     `;
   }).join('');
 
