@@ -133,6 +133,58 @@
   }
   .icon-wrap.flagged .icon-badge { display: flex; }
 
+  .done-wrap { position: relative; flex-shrink: 0; }
+  .done-btn {
+    height: 36px;
+    min-width: 64px;
+    padding: 0 16px;
+    border-radius: 20px;
+    border: 2px solid var(--pull);
+    background: transparent;
+    color: var(--pull);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Sriracha', cursive;
+    font-size: 14px;
+    transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  .done-btn.completed {
+    background: #4C8A3E;
+    border-color: #4C8A3E;
+    color: #F7F4EC;
+  }
+  .done-btn.pop { animation: doneBtnPop 0.5s ease; }
+  @keyframes doneBtnPop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.35); }
+    60% { transform: scale(0.9); }
+    100% { transform: scale(1); }
+  }
+  .card.completed-flash { animation: cardFlash 0.6s ease; }
+  @keyframes cardFlash {
+    0% { background: var(--card); transform: scale(1); }
+    25% { background: #E3F0DD; transform: scale(1.08); }
+    55% { transform: scale(0.985); }
+    80% { transform: scale(1.02); }
+    100% { background: var(--card); transform: scale(1); }
+  }
+  .reward-particle {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    font-size: 17px;
+    opacity: 0;
+    pointer-events: none;
+    animation: rewardParticleBurst 0.8s ease forwards;
+  }
+  @keyframes rewardParticleBurst {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(0.6); }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.15); }
+  }
+
   .fields { display: flex; gap: 28px; }
   .field-group { display: flex; align-items: baseline; gap: 8px; }
   .field-group input {
@@ -202,7 +254,7 @@
   .hist-name img { width: 30px; height: 30px; border-radius: 50%; }
   .delta { font-size: 13px; font-weight: bold; }
   .delta.up { color: var(--change-up); }
-  .delta.down { color: #B84C3C; }
+  .delta.down { color: #D97A2E; }
   .delta.same { color: var(--text-secondary); }
   .sparkline { margin-top: 8px; }
 
@@ -355,6 +407,7 @@
       <h1>LogIt</h1>
       <button class="big-btn primary" id="btn-start">Start new session</button>
       <button class="big-btn secondary" id="btn-history">View history</button>
+      <button class="big-btn secondary" id="btn-body-stats">Body stats</button>
       <button class="big-btn secondary" id="btn-settings">Settings</button>
     </div>
   </div>
@@ -384,6 +437,37 @@
     <div id="history-cards"></div>
     <div style="height:70px;"></div>
     <button id="reset-sessions-btn" style="display:block;margin:0 auto;padding:10px 18px;border-radius:10px;border:1.5px solid #8A5A3A;background:transparent;color:#8A5A3A;font-family:'Sriracha',cursive;font-size:13px;">Reset sessions</button>
+  </div>
+
+  <div id="screen-body-stats" class="screen">
+    <div class="back-link" id="btn-back-title-3">&larr; back</div>
+    <div class="header"><span class="session-label">Body stats</span></div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="fields" style="flex-wrap:wrap; row-gap:14px;">
+        <div class="field-group">
+          <input type="text" inputmode="decimal" id="bs-weight" placeholder="0">
+          <span class="unit">kg</span>
+        </div>
+        <div class="field-group">
+          <input type="text" inputmode="decimal" id="bs-height" placeholder="0">
+          <span class="unit">cm height</span>
+        </div>
+        <div class="field-group">
+          <input type="text" inputmode="decimal" id="bs-waist" placeholder="0">
+          <span class="unit">cm waist</span>
+        </div>
+        <div class="field-group">
+          <input type="text" inputmode="decimal" id="bs-neck" placeholder="0">
+          <span class="unit">cm neck</span>
+        </div>
+      </div>
+      <button class="big-btn primary" id="bs-log-btn" style="margin-top:16px;">Log measurement</button>
+      <div id="bs-error" style="color:#B84C3C;font-size:13px;margin-top:8px;display:none;"></div>
+    </div>
+
+    <div id="body-stats-cards"></div>
+    <div style="height:40px;"></div>
   </div>
 
   <div id="screen-settings" class="screen">
@@ -493,6 +577,7 @@ function getAllSessionData() {
 let customExercises = loadJSON('wl_custom_exercises', []);
 let exerciseMeta = loadJSON('wl_exercise_meta', {});
 let exerciseOrder = loadJSON('wl_exercise_order', null);
+let bodyStats = loadJSON('wl_body_stats', []); // [{ date, weight, height, waist, neck, bodyFatPct }]
 
 function getAllExercises() {
   const all = [...BUILT_IN_EXERCISES, ...customExercises];
@@ -543,7 +628,7 @@ async function backupToServer() {
         'Content-Type': 'application/json',
         'X-Auth-Token': AUTH_TOKEN
       },
-      body: JSON.stringify({ sessions, flags, customExercises, exerciseMeta, exerciseOrder, historyArchive })
+      body: JSON.stringify({ sessions, flags, customExercises, exerciseMeta, exerciseOrder, historyArchive, bodyStats })
     });
   } catch (err) {
     // silent failure — backup is best-effort, shouldn't block the user
@@ -571,12 +656,14 @@ async function restoreFromServer() {
     exerciseMeta = data.exerciseMeta || {};
     exerciseOrder = data.exerciseOrder || null;
     historyArchive = data.historyArchive || [];
+    bodyStats = data.bodyStats || [];
     saveJSON('wl_sessions', sessions);
     saveJSON('wl_flags', flags);
     saveJSON('wl_custom_exercises', customExercises);
     saveJSON('wl_exercise_meta', exerciseMeta);
     saveJSON('wl_exercise_order', exerciseOrder);
     saveJSON('wl_history_archive', historyArchive);
+    saveJSON('wl_body_stats', bodyStats);
     alert('Restore complete.');
     renderHistoryScreen();
   } catch (err) {
@@ -609,12 +696,14 @@ async function restorePreviousFromServer() {
     exerciseMeta = data.exerciseMeta || {};
     exerciseOrder = data.exerciseOrder || null;
     historyArchive = data.historyArchive || [];
+    bodyStats = data.bodyStats || [];
     saveJSON('wl_sessions', sessions);
     saveJSON('wl_flags', flags);
     saveJSON('wl_custom_exercises', customExercises);
     saveJSON('wl_exercise_meta', exerciseMeta);
     saveJSON('wl_exercise_order', exerciseOrder);
     saveJSON('wl_history_archive', historyArchive);
+    saveJSON('wl_body_stats', bodyStats);
     alert('Restored the previous backup.');
     renderHistoryScreen();
   } catch (err) {
@@ -661,6 +750,7 @@ async function autoSyncOnLoad() {
   }
 }
 let sessionFlags = {};
+let sessionCompleted = {}; // per-session "done" state for the reward button, not persisted
 let sessionDraft = loadJSON('wl_session_draft', {}); // in-progress inputs, keyed by exercise id: {weight, reps}
 
 function getLastEntry(exId) {
@@ -745,8 +835,52 @@ function playClickSound() {
   sound.play().catch(() => {});
 }
 
+// Reward sound for finishing an exercise: rotates randomly through several
+// clips (same "don't go stale" idea as SPLASH_MESSAGES) instead of always
+// playing the same one.
+const REWARD_SOUNDS = [
+  'sounds/reward/reward-1.mp3',
+  'sounds/reward/reward-2.mp3',
+  'sounds/reward/reward-3.mp3',
+  'sounds/reward/reward-4.mp3',
+  'sounds/reward/reward-5.mp3',
+  'sounds/reward/reward-6.mp3',
+  'sounds/reward/reward-7.mp3'
+];
+const rewardAudioPool = REWARD_SOUNDS.map(src => {
+  const a = new Audio(src);
+  a.preload = 'auto';
+  a.load();
+  return a;
+});
+
+function playRewardSound() {
+  const base = rewardAudioPool[Math.floor(Math.random() * rewardAudioPool.length)];
+  const sound = base.cloneNode();
+  sound.play().catch(() => {});
+}
+
+const REWARD_PARTICLES = ['🎉', '✨', '💪', '⭐', '🔥'];
+
+function spawnRewardParticles(container) {
+  const count = 6;
+  for (let i = 0; i < count; i++) {
+    const span = document.createElement('span');
+    span.className = 'reward-particle';
+    span.textContent = REWARD_PARTICLES[Math.floor(Math.random() * REWARD_PARTICLES.length)];
+    const angle = (Math.PI * 2 * i) / count + (Math.random() * 0.6 - 0.3);
+    const dist = 30 + Math.random() * 18;
+    span.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    span.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+    span.style.animationDelay = `${Math.random() * 0.08}s`;
+    container.appendChild(span);
+    span.addEventListener('animationend', () => span.remove());
+  }
+}
+
 function renderSessionScreen() {
   sessionFlags = {};
+  sessionCompleted = {};
   const cardsEl = document.getElementById('cards');
   cardsEl.innerHTML = '';
 
@@ -775,6 +909,9 @@ function renderSessionScreen() {
             ${wasFlagged ? '<div class="change-up">💪 Change weight 💪</div>' : ''}
           </div>
         </div>
+        <div class="done-wrap">
+          <button type="button" class="done-btn" data-id="${ex.id}" aria-label="Mark exercise done">Done</button>
+        </div>
       </div>
       <div class="fields">
         <div class="field-group">
@@ -796,6 +933,30 @@ function renderSessionScreen() {
       playClickSound();
       sessionFlags[id] = !sessionFlags[id];
       wrap.classList.toggle('flagged', sessionFlags[id]);
+    });
+  });
+
+const DONE_CHECK_ICON = '<svg width="18" height="18" viewBox="0 0 20 20"><path d="M5 10L8.5 13.5L15 6.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+
+  cardsEl.querySelectorAll('.done-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const card = btn.closest('.card');
+      const isCompleted = !sessionCompleted[id];
+      sessionCompleted[id] = isCompleted;
+      btn.classList.toggle('completed', isCompleted);
+      btn.innerHTML = isCompleted ? DONE_CHECK_ICON : 'Done';
+
+      if (isCompleted) {
+        playRewardSound();
+        btn.classList.remove('pop');
+        void btn.offsetWidth; // restart animation if clicked again quickly
+        btn.classList.add('pop');
+        card.classList.remove('completed-flash');
+        void card.offsetWidth;
+        card.classList.add('completed-flash');
+        spawnRewardParticles(btn.parentElement);
+      }
     });
   });
 
@@ -930,11 +1091,78 @@ function showSplash() {
   }, 2200);
 }
 
-function deltaBadge(current, previous) {
+// Reps can be written three ways:
+//   "12"        -> single number: every set was 12 reps
+//   "10-15"     -> a range: every set fell somewhere between 10 and 15
+//   "10-10-12"  -> per-set list (3+ numbers): each set's actual rep count
+// Returns a representative average for comparing progress across sessions,
+// regardless of which notation was used each time.
+function parseReps(str) {
+  if (!str) return null;
+  const nums = str.split('-').map(s => s.trim()).filter(s => s !== '').map(Number).filter(n => !isNaN(n));
+  if (nums.length === 0) return null;
+  if (nums.length === 2) {
+    // range notation: average of the two endpoints
+    return { type: 'range', values: nums, avg: (nums[0] + nums[1]) / 2 };
+  }
+  // single number, or 3+ = explicit per-set values
+  const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+  return { type: nums.length === 1 ? 'single' : 'list', values: nums, avg };
+}
+
+function round1(n) {
+  return Math.round(n * 10) / 10;
+}
+
+// US Navy method (men's version): estimates body fat % from waist, neck,
+// and height. The published coefficients (86.010 / 70.041 / 36.76) are
+// calibrated for INCHES, not centimeters — confirmed against multiple
+// independent sources, all of which convert cm to inches internally before
+// applying them. Since the rest of this app uses cm, we do that conversion
+// here rather than exposing it to the user.
+function computeNavyBodyFatMale(waistCm, neckCm, heightCm) {
+  const CM_PER_IN = 2.54;
+  const waistIn = waistCm / CM_PER_IN;
+  const neckIn = neckCm / CM_PER_IN;
+  const heightIn = heightCm / CM_PER_IN;
+  const diff = waistIn - neckIn;
+  if (diff <= 0) return null; // waist must exceed neck for the formula to be valid
+  return 86.010 * Math.log10(diff) - 70.041 * Math.log10(heightIn) + 36.76;
+}
+
+// Trend badge for a body-stat metric. Unlike exercise weight (where "up" is
+// always progress), whether up or down is "good" depends on the metric —
+// waist/body fat: lower is better. Weight/neck: no assumed direction, shown
+// as plain informational text rather than colored good/bad.
+function bodyStatBadge(current, previous, unit, lowerIsBetter) {
+  if (current === null || current === undefined) return { text: '—', cls: 'same' };
   if (previous === null || previous === undefined) return { text: 'first log', cls: 'same' };
-  const diff = current - previous;
-  if (diff > 0) return { text: `+${diff} kg`, cls: 'up' };
-  if (diff < 0) return { text: `${diff} kg`, cls: 'down' };
+  const diff = round1(current - previous);
+  if (diff === 0) return { text: 'same', cls: 'same' };
+  const sign = diff > 0 ? '+' : '';
+  const text = `${sign}${diff} ${unit}`;
+  if (!lowerIsBetter) return { text, cls: 'same' };
+  return { text, cls: diff < 0 ? 'up' : 'down' };
+}
+
+// Weight progress takes priority (it's the harder axis to move). Only when
+// weight is unchanged since last time do we fall back to comparing average
+// reps — this is what catches "same weight, more reps" as real progress,
+// and "same weight, fewer reps" as regression, instead of showing "same".
+function computeProgressBadge(curWeight, prevWeight, curRepsStr, prevRepsStr) {
+  if (prevWeight === null || prevWeight === undefined) return { text: 'first log', cls: 'same' };
+
+  const weightDiff = curWeight - prevWeight;
+  if (weightDiff > 0) return { text: `+${weightDiff} kg`, cls: 'up' };
+  if (weightDiff < 0) return { text: `${weightDiff} kg`, cls: 'down' };
+
+  const curReps = parseReps(curRepsStr);
+  const prevReps = parseReps(prevRepsStr);
+  if (curReps && prevReps) {
+    const repsDiff = round1(curReps.avg - prevReps.avg);
+    if (repsDiff > 0) return { text: `+${repsDiff} reps`, cls: 'up' };
+    if (repsDiff < 0) return { text: `${repsDiff} reps`, cls: 'down' };
+  }
   return { text: 'same', cls: 'same' };
 }
 
@@ -1008,7 +1236,7 @@ function renderHistoryScreen() {
   getAllExercises().forEach(ex => {
     let points = getAllSessionData()
       .filter(s => s.entries[ex.id])
-      .map(s => ({ value: s.entries[ex.id].weightNum, date: s.date }));
+      .map(s => ({ value: s.entries[ex.id].weightNum, reps: s.entries[ex.id].reps, date: s.date }));
 
     if (points.length === 0) return;
 
@@ -1020,10 +1248,9 @@ function renderHistoryScreen() {
       points = downsampleToMilestones(points, 5);
     }
 
-    const values = points.map(p => p.value);
-    const current = values[values.length - 1];
-    const previous = values.length > 1 ? values[values.length - 2] : null;
-    const badge = deltaBadge(current, previous);
+    const current = points[points.length - 1];
+    const previous = points.length > 1 ? points[points.length - 2] : null;
+    const badge = computeProgressBadge(current.value, previous ? previous.value : null, current.reps, previous ? previous.reps : null);
 
     const iconSrc = resolveIconSrc(ex);
 
@@ -1044,6 +1271,111 @@ function renderHistoryScreen() {
     el.innerHTML = '<div style="text-align:center;color:var(--text-secondary);margin-top:40px;">No sessions logged yet.</div>';
   }
 }
+
+function getLastBodyStat() {
+  return bodyStats.length ? bodyStats[bodyStats.length - 1] : null;
+}
+
+function renderBodyStatsScreen() {
+  const last = getLastBodyStat();
+  document.getElementById('bs-weight').value = last && last.weight != null ? last.weight : '';
+  document.getElementById('bs-height').value = last && last.height != null ? last.height : '';
+  document.getElementById('bs-waist').value = last && last.waist != null ? last.waist : '';
+  document.getElementById('bs-neck').value = last && last.neck != null ? last.neck : '';
+  document.getElementById('bs-error').style.display = 'none';
+
+  const el = document.getElementById('body-stats-cards');
+  el.innerHTML = '';
+
+  if (bodyStats.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text-secondary);margin-top:20px;">No measurements logged yet.</div>';
+    return;
+  }
+
+  // Same milestone-downsampling as exercise history, so long histories
+  // still fit a readable sparkline.
+  const metrics = [
+    { key: 'weight', label: 'Weight', unit: 'kg', lowerIsBetter: false },
+    { key: 'waist', label: 'Waist', unit: 'cm', lowerIsBetter: true },
+    { key: 'neck', label: 'Neck', unit: 'cm', lowerIsBetter: false },
+    { key: 'bodyFatPct', label: 'Body fat %', unit: '%', lowerIsBetter: true }
+  ];
+
+  metrics.forEach(metric => {
+    let points = bodyStats
+      .filter(s => s[metric.key] != null)
+      .map(s => ({ value: s[metric.key], date: s.date }));
+
+    if (points.length === 0) return;
+
+    points = downsampleToMilestones(points, 5);
+
+    const current = points[points.length - 1].value;
+    const previous = points.length > 1 ? points[points.length - 2].value : null;
+    const badge = bodyStatBadge(current, previous, metric.unit, metric.lowerIsBetter);
+
+    const card = document.createElement('div');
+    card.className = 'hist-card';
+    card.style.setProperty('--cat-color', 'var(--pull)');
+    card.innerHTML = `
+      <div class="hist-top">
+        <div class="hist-name">${metric.label}</div>
+        <div class="delta ${badge.cls}">${badge.text}</div>
+      </div>
+      <div class="sparkline" style="color:#5C6670">${sparklineSVG(points)}</div>
+    `;
+    el.appendChild(card);
+  });
+
+  if (el.children.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text-secondary);margin-top:20px;">No measurements logged yet.</div>';
+  }
+}
+
+document.getElementById('bs-log-btn').addEventListener('click', () => {
+  const weightRaw = document.getElementById('bs-weight').value.trim();
+  const heightRaw = document.getElementById('bs-height').value.trim();
+  const waistRaw = document.getElementById('bs-waist').value.trim();
+  const neckRaw = document.getElementById('bs-neck').value.trim();
+
+  const height = parseFloat(heightRaw);
+  const waist = parseFloat(waistRaw);
+  const neck = parseFloat(neckRaw);
+  const weight = weightRaw ? parseFloat(weightRaw) : null;
+
+  const errorEl = document.getElementById('bs-error');
+  if (!height || !waist || !neck) {
+    errorEl.textContent = 'Height, waist, and neck are needed to calculate body fat %.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const bodyFatPctRaw = computeNavyBodyFatMale(waist, neck, height);
+  if (bodyFatPctRaw === null) {
+    errorEl.textContent = "Waist needs to be larger than neck for this formula to work — double check your measurements.";
+    errorEl.style.display = 'block';
+    return;
+  }
+  errorEl.style.display = 'none';
+
+  bodyStats.push({
+    date: new Date().toISOString(),
+    weight,
+    height,
+    waist,
+    neck,
+    bodyFatPct: round1(bodyFatPctRaw)
+  });
+  saveJSON('wl_body_stats', bodyStats);
+  backupToServer();
+  renderBodyStatsScreen();
+});
+
+document.getElementById('btn-body-stats').addEventListener('click', () => {
+  renderBodyStatsScreen();
+  showScreen('screen-body-stats');
+});
+document.getElementById('btn-back-title-3').addEventListener('click', () => history.back());
 
 document.getElementById('btn-start').addEventListener('click', () => {
   renderSessionScreen();
