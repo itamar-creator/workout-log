@@ -219,6 +219,21 @@
   .gslp-fail-auto { margin-top: 10px; padding: 10px; background: #F0E4D8; border-radius: 10px; font-size: 12.5px; color: #8A5A3A; }
   .gslp-free-input { width: 72px; height: 36px; border-radius: 10px; border: 1.5px solid var(--text-secondary); text-align: center; font-size: 14px; }
   .gslp-done-row { display: flex; align-items: center; gap: 10px; }
+  .gslp-next-label {
+    display: none;
+    position: absolute;
+    top: -8px;
+    right: 12px;
+    background: var(--change-up);
+    color: #F7F4EC;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .gslp-next-label.show { display: block; }
 
   .fields { display: flex; gap: 28px; }
   .field-group { display: flex; align-items: baseline; gap: 8px; }
@@ -528,8 +543,14 @@
     <div class="back-link" id="btn-back-title-gslp">&larr; back</div>
     <div class="header"><span class="session-label">GSLP</span></div>
     <p style="text-align:center;color:var(--text-secondary);margin-bottom:20px;">which workout today?</p>
-    <button class="big-btn primary" id="gslp-pick-a">Workout A</button>
-    <button class="big-btn secondary" id="gslp-pick-b" style="margin-top:12px;">Workout B</button>
+    <div style="position:relative;">
+      <button class="big-btn primary" id="gslp-pick-a">Workout A</button>
+      <span class="gslp-next-label" id="gslp-next-a">next</span>
+    </div>
+    <div style="position:relative;margin-top:12px;">
+      <button class="big-btn secondary" id="gslp-pick-b">Workout B</button>
+      <span class="gslp-next-label" id="gslp-next-b">next</span>
+    </div>
   </div>
 
   <div id="screen-gslp-day" class="screen">
@@ -1964,7 +1985,16 @@ function gslpSaveSession() {
   showScreen('screen-title');
 }
 
-document.getElementById('btn-gslp').addEventListener('click', () => showScreen('screen-gslp-pick'));
+function renderGslpPickScreen() {
+  const next = gslpState.nextDay; // 'A' or 'B', defaults to 'A' when no data exists yet
+  document.getElementById('gslp-next-a').classList.toggle('show', next === 'A');
+  document.getElementById('gslp-next-b').classList.toggle('show', next === 'B');
+}
+
+document.getElementById('btn-gslp').addEventListener('click', () => {
+  renderGslpPickScreen();
+  showScreen('screen-gslp-pick');
+});
 document.getElementById('btn-back-title-gslp').addEventListener('click', () => history.back());
 document.getElementById('gslp-pick-a').addEventListener('click', () => {
   renderGslpDayScreen('A');
@@ -2463,6 +2493,7 @@ window.addEventListener('popstate', () => {
     history.pushState({ trail: [...navTrail] }, '', '#' + prevScreen);
     if (prevScreen === 'screen-history') renderHistoryScreen();
     if (prevScreen === 'screen-gslp-history') renderGslpHistoryScreen();
+    if (prevScreen === 'screen-gslp-pick') renderGslpPickScreen();
     if (prevScreen === 'screen-manage-exercises') renderManageExercisesScreen();
   }
 });
