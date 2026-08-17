@@ -444,10 +444,10 @@
     <div class="title-wrap">
       <img src="icons/icon-512.png" alt="" style="width:144px;height:144px;border-radius:33px;margin-top:16px;margin-bottom:8px;">
       <h1>LogIt</h1>
-      <button class="big-btn primary" id="btn-start">Start new session</button>
+      <button class="big-btn primary" id="btn-start">New free session</button>
+      <button class="big-btn primary" id="btn-gslp">New GSLP session</button>
       <button class="big-btn secondary" id="btn-history">View history</button>
       <button class="big-btn secondary" id="btn-body-stats">Body stats</button>
-      <button class="big-btn secondary" id="btn-gslp">GSLP</button>
       <button class="big-btn secondary" id="btn-settings">Settings</button>
     </div>
   </div>
@@ -467,9 +467,16 @@
     <button class="save-btn" id="save-btn">Save session</button>
   </div>
 
-  <div id="screen-history" class="screen">
-    <div class="back-link" id="btn-back-title-2">&larr; back</div>
+  <div id="screen-history-pick" class="screen">
+    <div class="back-link" id="btn-back-title-history">&larr; back</div>
     <div class="header"><span class="session-label">History</span></div>
+    <button class="big-btn primary" id="history-pick-free">Free sessions</button>
+    <button class="big-btn secondary" id="history-pick-gslp" style="margin-top:12px;">GSLP sessions</button>
+  </div>
+
+  <div id="screen-history" class="screen">
+    <div class="back-link" id="btn-back-history-pick">&larr; back</div>
+    <div class="header"><span class="session-label">Free sessions</span></div>
     <div style="display:flex;gap:8px;margin-bottom:16px;">
       <button class="hist-toggle-btn active" id="hist-view-month" data-mode="month">Past month</button>
       <button class="hist-toggle-btn" id="hist-view-all" data-mode="all">All time</button>
@@ -477,6 +484,13 @@
     <div id="history-cards"></div>
     <div style="height:70px;"></div>
     <button id="reset-sessions-btn" style="display:block;margin:0 auto;padding:10px 18px;border-radius:10px;border:1.5px solid #8A5A3A;background:transparent;color:#8A5A3A;font-family:'Sriracha',cursive;font-size:13px;">Reset sessions</button>
+  </div>
+
+  <div id="screen-gslp-history" class="screen">
+    <div class="back-link" id="btn-back-history-pick-2">&larr; back</div>
+    <div class="header"><span class="session-label">GSLP sessions</span></div>
+    <div id="gslp-history-cards"></div>
+    <div style="height:40px;"></div>
   </div>
 
   <div id="screen-body-stats" class="screen">
@@ -1521,6 +1535,73 @@ function getLastBodyStat() {
   return bodyStats.length ? bodyStats[bodyStats.length - 1] : null;
 }
 
+const GSLP_HISTORY_METRICS = [
+  { id: 'squat', label: 'Squat', unit: 'kg' },
+  { id: 'deadlift', label: 'Deadlift', unit: 'kg' },
+  { id: 'bench', label: 'Bench press', unit: 'kg/hand' },
+  { id: 'row', label: 'Dumbbell row', unit: 'kg/hand' },
+  { id: 'ohp', label: 'Overhead press', unit: 'kg/hand' },
+  { id: 'chinup', label: 'Chin-ups (weighted)', unit: 'kg' },
+  { id: 'curls', label: 'Bicep curls', unit: '' },
+  { id: 'dips', label: 'Dips', unit: '' }
+];
+
+// Unlike body stats, a heavier weight is unambiguously progress for a GSLP
+// lift — so this always colors "up" green and "down" orange, no
+// lowerIsBetter branching needed.
+function gslpHistoryBadge(current, previous, unit) {
+  if (previous === null || previous === undefined) return { text: 'first log', cls: 'same' };
+  const diff = round1(current - previous);
+  if (diff === 0) return { text: 'same', cls: 'same' };
+  const sign = diff > 0 ? '+' : '';
+  return { text: sign + diff + (unit ? ' ' + unit : ''), cls: diff > 0 ? 'up' : 'down' };
+}
+
+function renderGslpHistoryScreen() {
+  const el = document.getElementById('gslp-history-cards');
+  el.innerHTML = '';
+
+  GSLP_HISTORY_METRICS.forEach(metric => {
+    let points = [];
+    gslpLog.forEach(entry => {
+      const l = entry.lifts[metric.id];
+      if (!l) return;
+      let value = null;
+      if (metric.id === 'chinup') {
+        if (l.weighted) value = l.addedWeight;
+      } else if (metric.id === 'curls' || metric.id === 'dips') {
+        const n = parseFloat(l.weight);
+        if (!isNaN(n)) value = n;
+      } else {
+        value = l.weight;
+      }
+      if (value !== null && value !== undefined) points.push({ value, date: entry.date });
+    });
+
+    if (points.length === 0) return;
+    points = downsampleToMilestones(points, 5);
+
+    const current = points[points.length - 1].value;
+    const previous = points.length > 1 ? points[points.length - 2].value : null;
+    const badge = gslpHistoryBadge(current, previous, metric.unit);
+
+    const card = document.createElement('div');
+    card.className = 'hist-card';
+    card.style.setProperty('--cat-color', 'var(--push)');
+    card.innerHTML =
+      '<div class="hist-top">' +
+        '<div class="hist-name">' + metric.label + '</div>' +
+        '<div class="delta ' + badge.cls + '">' + badge.text + '</div>' +
+      '</div>' +
+      '<div class="sparkline" style="color:#C1633E">' + sparklineSVG(points) + '</div>';
+    el.appendChild(card);
+  });
+
+  if (el.children.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text-secondary);margin-top:40px;">No GSLP sessions logged yet.</div>';
+  }
+}
+
 function renderBodyStatsScreen() {
   const last = getLastBodyStat();
   document.getElementById('bs-weight').value = last && last.weight != null ? last.weight : '';
@@ -1907,9 +1988,19 @@ document.getElementById('btn-start').addEventListener('click', () => {
   showScreen('screen-session');
 });
 document.getElementById('btn-history').addEventListener('click', () => {
+  showScreen('screen-history-pick');
+});
+document.getElementById('btn-back-title-history').addEventListener('click', () => history.back());
+document.getElementById('history-pick-free').addEventListener('click', () => {
   renderHistoryScreen();
   showScreen('screen-history');
 });
+document.getElementById('history-pick-gslp').addEventListener('click', () => {
+  renderGslpHistoryScreen();
+  showScreen('screen-gslp-history');
+});
+document.getElementById('btn-back-history-pick').addEventListener('click', () => history.back());
+document.getElementById('btn-back-history-pick-2').addEventListener('click', () => history.back());
 
 document.querySelectorAll('.hist-toggle-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -2356,7 +2447,6 @@ document.getElementById('export-btn').addEventListener('click', exportToExcel);
 document.getElementById('restore-btn').addEventListener('click', restoreFromServer);
 document.getElementById('restore-previous-btn').addEventListener('click', restorePreviousFromServer);
 document.getElementById('btn-back-title').addEventListener('click', () => history.back());
-document.getElementById('btn-back-title-2').addEventListener('click', () => history.back());
 
 // Set up the initial history entry so the very first screen (title) is
 // the "floor" — the phone's back button from here exits normally, but
@@ -2372,6 +2462,7 @@ window.addEventListener('popstate', () => {
     showScreenDOM(prevScreen);
     history.pushState({ trail: [...navTrail] }, '', '#' + prevScreen);
     if (prevScreen === 'screen-history') renderHistoryScreen();
+    if (prevScreen === 'screen-gslp-history') renderGslpHistoryScreen();
     if (prevScreen === 'screen-manage-exercises') renderManageExercisesScreen();
   }
 });
