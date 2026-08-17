@@ -185,6 +185,41 @@
     100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.15); }
   }
 
+  .gslp-card { background: var(--card); border-radius: 16px; padding: 16px 18px; border-left: 6px solid var(--push); margin-bottom: 16px; position: relative; }
+  .gslp-card.dumbbell { border-left-color: var(--pull); }
+  .gslp-card.accessory { border-left-color: var(--pull); }
+  .gslp-header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .gslp-name { font-size: 19px; font-weight: 600; }
+  .gslp-weight-pill { display: flex; align-items: baseline; gap: 5px; }
+  .gslp-weight-input {
+    width: 76px; border: 2px solid var(--push); background: #FFFFFF; text-align: center;
+    font-size: 20px; font-weight: 600; color: var(--text); padding: 6px 4px; border-radius: 8px;
+  }
+  .dumbbell .gslp-weight-input { border-color: var(--pull); }
+  .gslp-weight-unit { font-size: 12px; color: var(--text-secondary); }
+  .gslp-change-badge { font-size: 11.5px; font-weight: 600; text-align: right; margin-top: 4px; }
+  .gslp-change-badge.up { color: var(--change-up); }
+  .gslp-change-badge.down { color: #D97A2E; }
+  .gslp-warmup-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; margin: 12px 0 4px; }
+  .gslp-warmup-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .gslp-warmup-step { flex: 1; background: var(--bg); border-radius: 8px; padding: 6px 4px; text-align: center; }
+  .gslp-warmup-w { font-size: 14px; font-weight: 600; }
+  .gslp-warmup-r { font-size: 11px; color: var(--text-secondary); }
+  .gslp-work-row { display: flex; align-items: center; gap: 10px; border-top: 1px solid #E3D9C2; padding-top: 10px; }
+  .gslp-set-label { font-size: 13.5px; color: var(--text-secondary); }
+  .gslp-amrap-input {
+    width: 76px; border: 2px solid var(--pull); background: #FFFFFF; text-align: center;
+    font-size: 20px; font-weight: 600; padding: 6px 4px; border-radius: 8px;
+  }
+  .gslp-fail-box { margin-top: 10px; padding: 10px; background: #F0E4D8; border-radius: 10px; }
+  .gslp-fail-msg { font-size: 12.5px; color: #8A5A3A; margin-bottom: 8px; }
+  .gslp-fail-choices { display: flex; gap: 8px; }
+  .gslp-fail-choice-btn { flex: 1; padding: 7px; border-radius: 10px; border: 1.5px solid #8A5A3A; background: transparent; color: #8A5A3A; font-size: 12px; cursor: pointer; font-family: 'Sriracha', cursive; }
+  .gslp-fail-choice-btn.picked { background: #8A5A3A; color: #F7F4EC; }
+  .gslp-fail-auto { margin-top: 10px; padding: 10px; background: #F0E4D8; border-radius: 10px; font-size: 12.5px; color: #8A5A3A; }
+  .gslp-free-input { width: 72px; height: 36px; border-radius: 10px; border: 1.5px solid var(--text-secondary); text-align: center; font-size: 14px; }
+  .gslp-done-row { display: flex; align-items: center; gap: 10px; }
+
   .fields { display: flex; gap: 28px; }
   .field-group { display: flex; align-items: baseline; gap: 8px; }
   .field-group input {
@@ -228,6 +263,10 @@
     font-size: 18px;
     cursor: pointer;
     margin-top: 4px;
+  }
+  .save-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
   .back-link {
     display: inline-block;
@@ -408,6 +447,7 @@
       <button class="big-btn primary" id="btn-start">Start new session</button>
       <button class="big-btn secondary" id="btn-history">View history</button>
       <button class="big-btn secondary" id="btn-body-stats">Body stats</button>
+      <button class="big-btn secondary" id="btn-gslp">GSLP</button>
       <button class="big-btn secondary" id="btn-settings">Settings</button>
     </div>
   </div>
@@ -467,6 +507,23 @@
     </div>
 
     <div id="body-stats-cards"></div>
+    <div style="height:40px;"></div>
+  </div>
+
+  <div id="screen-gslp-pick" class="screen">
+    <div class="back-link" id="btn-back-title-gslp">&larr; back</div>
+    <div class="header"><span class="session-label">GSLP</span></div>
+    <p style="text-align:center;color:var(--text-secondary);margin-bottom:20px;">which workout today?</p>
+    <button class="big-btn primary" id="gslp-pick-a">Workout A</button>
+    <button class="big-btn secondary" id="gslp-pick-b" style="margin-top:12px;">Workout B</button>
+  </div>
+
+  <div id="screen-gslp-day" class="screen">
+    <div class="back-link" id="btn-back-gslp-pick">&larr; back</div>
+    <div class="header"><span class="session-label" id="gslp-day-label">GSLP</span></div>
+    <div id="gslp-cards"></div>
+    <div style="height:16px;"></div>
+    <button class="save-btn" id="gslp-save-btn">Save session</button>
     <div style="height:40px;"></div>
   </div>
 
@@ -579,6 +636,56 @@ let exerciseMeta = loadJSON('wl_exercise_meta', {});
 let exerciseOrder = loadJSON('wl_exercise_order', null);
 let bodyStats = loadJSON('wl_body_stats', []); // [{ date, weight, height, waist, neck, bodyFatPct }]
 
+// GSLP (Greyskull LP) tracker — Itamar's variant. Base rep target is 7
+// (not the standard 5); progression uses "the rule of 14" (double the base
+// target) as the equivalent of standard GSLP's rule of 10.
+//
+// Day A: Bench Press (dumbbell), Dumbbell Row (dumbbell), Squat (barbell), Bicep Curls (accessory)
+// Day B: Overhead Press (dumbbell), Chin-ups (bodyweight\u2192weighted), Deadlift (barbell, single AMRAP set only), Dips (accessory)
+const GSLP_BASE_REPS = 7;
+const GSLP_BARBELL_INCREMENT = 5;    // kg, squat/deadlift/weighted-chinup progression
+const GSLP_CHINUP_INCREMENT = 2.5;   // kg, once chin-ups go weighted
+const GSLP_DUMBBELL_LEVELUP_THRESHOLD = 12; // AMRAP reps needed to move up a dumbbell size
+const GSLP_BARBELL_START = 20;       // kg, empty bar \u2014 floor for barbell deloads
+
+// Itamar's actual dumbbells: 1kg steps up to 10kg, then 2kg steps above.
+const GSLP_DUMBBELL_STEPS = [4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40];
+
+function gslpDumbbellStepUp(current) {
+  const idx = GSLP_DUMBBELL_STEPS.indexOf(current);
+  if (idx === -1 || idx === GSLP_DUMBBELL_STEPS.length - 1) return current + 2; // off-table fallback
+  return GSLP_DUMBBELL_STEPS[idx + 1];
+}
+function gslpDumbbellStepDown(current) {
+  const idx = GSLP_DUMBBELL_STEPS.indexOf(current);
+  if (idx <= 0) return GSLP_DUMBBELL_STEPS[0];
+  return GSLP_DUMBBELL_STEPS[idx - 1];
+}
+// Rounds an arbitrary calculated weight (e.g. a warm-up %) down to the
+// nearest real dumbbell size you actually own, never up past it.
+function gslpRoundToDumbbell(w) {
+  let result = GSLP_DUMBBELL_STEPS[0];
+  for (const step of GSLP_DUMBBELL_STEPS) {
+    if (step <= w) result = step; else break;
+  }
+  return result;
+}
+
+function gslpDefaultState() {
+  return {
+    nextDay: 'A',
+    squat: { weight: GSLP_BARBELL_START, lastAmrap: null, lastChange: null, lastChangeFrom: null },
+    deadlift: { weight: GSLP_BARBELL_START, lastAmrap: null, lastChange: null, lastChangeFrom: null },
+    bench: { dumbbell: GSLP_DUMBBELL_STEPS[0], lastChange: null, lastChangeFrom: null },
+    row: { dumbbell: GSLP_DUMBBELL_STEPS[0], lastChange: null, lastChangeFrom: null },
+    ohp: { dumbbell: GSLP_DUMBBELL_STEPS[0], lastChange: null, lastChangeFrom: null },
+    chinup: { weighted: false, addedWeight: 0, lastAmrap: null, lastChange: null, lastChangeFrom: null }
+  };
+}
+let gslpState = loadJSON('wl_gslp_state', gslpDefaultState());
+let gslpLog = loadJSON('wl_gslp_log', []); // [{ date, day, lifts: { squat: {weight, reps, event}, ... } }]
+let gslpDraft = {}; // in-progress AMRAP entries + fail-choices for the current unsaved GSLP session
+
 function getAllExercises() {
   const all = [...BUILT_IN_EXERCISES, ...customExercises];
   if (!exerciseOrder) {
@@ -628,7 +735,7 @@ async function backupToServer() {
         'Content-Type': 'application/json',
         'X-Auth-Token': AUTH_TOKEN
       },
-      body: JSON.stringify({ sessions, flags, customExercises, exerciseMeta, exerciseOrder, historyArchive, bodyStats })
+      body: JSON.stringify({ sessions, flags, customExercises, exerciseMeta, exerciseOrder, historyArchive, bodyStats, gslpState, gslpLog })
     });
   } catch (err) {
     // silent failure — backup is best-effort, shouldn't block the user
@@ -657,6 +764,8 @@ async function restoreFromServer() {
     exerciseOrder = data.exerciseOrder || null;
     historyArchive = data.historyArchive || [];
     bodyStats = data.bodyStats || [];
+    gslpState = data.gslpState || gslpDefaultState();
+    gslpLog = data.gslpLog || [];
     saveJSON('wl_sessions', sessions);
     saveJSON('wl_flags', flags);
     saveJSON('wl_custom_exercises', customExercises);
@@ -664,6 +773,8 @@ async function restoreFromServer() {
     saveJSON('wl_exercise_order', exerciseOrder);
     saveJSON('wl_history_archive', historyArchive);
     saveJSON('wl_body_stats', bodyStats);
+    saveJSON('wl_gslp_state', gslpState);
+    saveJSON('wl_gslp_log', gslpLog);
     alert('Restore complete.');
     renderHistoryScreen();
   } catch (err) {
@@ -697,6 +808,8 @@ async function restorePreviousFromServer() {
     exerciseOrder = data.exerciseOrder || null;
     historyArchive = data.historyArchive || [];
     bodyStats = data.bodyStats || [];
+    gslpState = data.gslpState || gslpDefaultState();
+    gslpLog = data.gslpLog || [];
     saveJSON('wl_sessions', sessions);
     saveJSON('wl_flags', flags);
     saveJSON('wl_custom_exercises', customExercises);
@@ -704,6 +817,8 @@ async function restorePreviousFromServer() {
     saveJSON('wl_exercise_order', exerciseOrder);
     saveJSON('wl_history_archive', historyArchive);
     saveJSON('wl_body_stats', bodyStats);
+    saveJSON('wl_gslp_state', gslpState);
+    saveJSON('wl_gslp_log', gslpLog);
     alert('Restored the previous backup.');
     renderHistoryScreen();
   } catch (err) {
@@ -880,6 +995,7 @@ function spawnRewardParticles(container) {
 function renderSessionScreen() {
   sessionFlags = {};
   sessionCompleted = {};
+  document.getElementById('save-btn').disabled = false;
   const cardsEl = document.getElementById('cards');
   cardsEl.innerHTML = '';
 
@@ -887,8 +1003,10 @@ function renderSessionScreen() {
     const last = getLastEntry(ex.id);
     const wasFlagged = !!flags[ex.id];
     const draft = sessionDraft[ex.id];
-    const lastWeight = draft ? draft.weight : (last ? last.weight : '');
-    const lastReps = draft ? draft.reps : (last ? last.reps : '');
+    const lastWeight = (draft && draft.weight !== undefined) ? draft.weight : (last ? last.weight : '');
+    const lastReps = (draft && draft.reps !== undefined) ? draft.reps : (last ? last.reps : '');
+    sessionFlags[ex.id] = (draft && draft.flagged !== undefined) ? draft.flagged : false;
+    sessionCompleted[ex.id] = (draft && draft.completed !== undefined) ? draft.completed : false;
     const iconSrc = resolveIconSrc(ex);
 
     const card = document.createElement('div');
@@ -899,7 +1017,7 @@ function renderSessionScreen() {
     card.innerHTML = `
       <div class="card-top">
         <div class="card-left">
-          <div class="icon-wrap" data-id="${ex.id}" role="button" aria-label="Mark ready to increase weight">
+          <div class="icon-wrap${sessionFlags[ex.id] ? ' flagged' : ''}" data-id="${ex.id}" role="button" aria-label="Mark ready to increase weight">
             <img class="icon-img" src="${iconSrc}" data-icon-for="${ex.id}">
             <span class="icon-badge"><svg width="13" height="13" viewBox="0 0 20 20"><path d="M10 15V6M6 10L10 5L14 10" stroke="#F7F4EC" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>
           </div>
@@ -909,7 +1027,7 @@ function renderSessionScreen() {
           </div>
         </div>
         <div class="done-wrap">
-          <button type="button" class="done-btn" data-id="${ex.id}" aria-label="Mark exercise done">Done</button>
+          <button type="button" class="done-btn${sessionCompleted[ex.id] ? ' completed' : ''}" data-id="${ex.id}" aria-label="Mark exercise done">${sessionCompleted[ex.id] ? DONE_CHECK_ICON : 'Done'}</button>
         </div>
       </div>
       <div class="fields">
@@ -932,6 +1050,9 @@ function renderSessionScreen() {
       playClickSound();
       sessionFlags[id] = !sessionFlags[id];
       wrap.classList.toggle('flagged', sessionFlags[id]);
+      sessionDraft[id] = sessionDraft[id] || {};
+      sessionDraft[id].flagged = sessionFlags[id];
+      saveJSON('wl_session_draft', sessionDraft);
     });
   });
 
@@ -945,6 +1066,9 @@ const DONE_CHECK_ICON = '<svg width="18" height="18" viewBox="0 0 20 20"><path d
       sessionCompleted[id] = isCompleted;
       btn.classList.toggle('completed', isCompleted);
       btn.innerHTML = isCompleted ? DONE_CHECK_ICON : 'Done';
+      sessionDraft[id] = sessionDraft[id] || {};
+      sessionDraft[id].completed = isCompleted;
+      saveJSON('wl_session_draft', sessionDraft);
 
       if (isCompleted) {
         playRewardSound();
@@ -978,6 +1102,10 @@ function updateSessionLabel() {
 }
 
 document.getElementById('save-btn').addEventListener('click', () => {
+  const saveBtn = document.getElementById('save-btn');
+  if (saveBtn.disabled) return; // guards against a double-tap pushing two session entries
+  saveBtn.disabled = true;
+
   const entries = {};
   const newFlags = {};
 
@@ -1003,10 +1131,20 @@ document.getElementById('save-btn').addEventListener('click', () => {
 
   sessions.push({ date: new Date().toISOString(), entries });
   flags = newFlags;
-  saveJSON('wl_sessions', sessions);
-  saveJSON('wl_flags', flags);
-  sessionDraft = {};
-  saveJSON('wl_session_draft', sessionDraft);
+
+  try {
+    saveJSON('wl_sessions', sessions);
+    saveJSON('wl_flags', flags);
+    sessionDraft = {};
+    saveJSON('wl_session_draft', sessionDraft);
+  } catch (err) {
+    sessions.pop(); // undo the in-memory push — it never actually got persisted
+    alert('Saving failed — your session was NOT saved. This usually means your device is out of storage space. Please free up space and try again.');
+    console.warn('Save failed:', err);
+    saveBtn.disabled = false;
+    return;
+  }
+
   backupToServer();
 
   showSplash();
@@ -1144,9 +1282,117 @@ function bodyStatBadge(current, previous, unit, lowerIsBetter) {
   return { text, cls: diff < 0 ? 'up' : 'down' };
 }
 
-// Weight progress takes priority (it's the harder axis to move). Only when
-// weight is unchanged since last time do we fall back to comparing average
-// reps — this is what catches "same weight, more reps" as real progress,
+// --- GSLP progression rules ---
+// Barbell lifts (squat, deadlift, and chin-ups once weighted): "rule of 14"
+// — this session's AMRAP + last session's AMRAP at the SAME weight >= 14
+// triggers a weight increase. Missing the base rep target (7) doesn't
+// auto-deload — Itamar chooses between deloading 10% or retrying the same
+// weight next time (failChoice: 'deload' | 'retry').
+function progressBarbellLift(state, amrapReps, increment, failChoice) {
+  if (amrapReps < GSLP_BASE_REPS) {
+    const from = state.weight;
+    if (failChoice === 'deload') {
+      state.weight = Math.max(GSLP_BARBELL_START, round1(state.weight * 0.9));
+      state.lastAmrap = null;
+      state.lastChange = 'deload';
+      state.lastChangeFrom = from;
+      return 'deload';
+    }
+    state.lastAmrap = null;
+    state.lastChange = null;
+    state.lastChangeFrom = null;
+    return 'retry';
+  }
+  const total = amrapReps + (state.lastAmrap || 0);
+  if (total >= GSLP_BASE_REPS * 2) {
+    const from = state.weight;
+    state.weight += increment;
+    state.lastAmrap = null;
+    state.lastChange = 'levelup';
+    state.lastChangeFrom = from;
+    return 'levelup';
+  }
+  state.lastAmrap = amrapReps;
+  return 'hold';
+}
+
+// Dumbbell lifts (bench, OHP, row): fixed jumps on Itamar's actual dumbbell
+// scale (1kg steps to 10kg, 2kg steps above) are a much bigger relative
+// jump than a barbell plate, so this uses a flat AMRAP threshold instead of
+// the rule-of-14 comparison, and steps automatically (no choice) on a miss.
+function progressDumbbellLift(state, amrapReps) {
+  const from = state.dumbbell;
+  if (amrapReps < GSLP_BASE_REPS) {
+    state.dumbbell = gslpDumbbellStepDown(state.dumbbell);
+    state.lastChange = state.dumbbell !== from ? 'deload' : null;
+    state.lastChangeFrom = from;
+    return 'deload';
+  }
+  if (amrapReps >= GSLP_DUMBBELL_LEVELUP_THRESHOLD) {
+    state.dumbbell = gslpDumbbellStepUp(state.dumbbell);
+    state.lastChange = 'levelup';
+    state.lastChangeFrom = from;
+    return 'levelup';
+  }
+  return 'hold';
+}
+
+// Chin-ups: bodyweight reps until the AMRAP threshold is cleared, then
+// switches to weighted and follows the same rule-of-14 + choice logic as
+// the barbell lifts from that point on.
+function progressChinup(state, amrapReps, failChoice) {
+  if (!state.weighted) {
+    if (amrapReps >= GSLP_DUMBBELL_LEVELUP_THRESHOLD) {
+      state.weighted = true;
+      state.addedWeight = GSLP_CHINUP_INCREMENT;
+      state.lastAmrap = null;
+      state.lastChange = 'started-weighted';
+      state.lastChangeFrom = 0;
+      return 'started-weighted';
+    }
+    return 'hold';
+  }
+  if (amrapReps < GSLP_BASE_REPS) {
+    const from = state.addedWeight;
+    if (failChoice === 'deload') {
+      state.addedWeight = Math.max(0, round1(state.addedWeight - GSLP_CHINUP_INCREMENT));
+      if (state.addedWeight === 0) state.weighted = false;
+      state.lastAmrap = null;
+      state.lastChange = 'deload';
+      state.lastChangeFrom = from;
+      return 'deload';
+    }
+    state.lastAmrap = null;
+    state.lastChange = null;
+    state.lastChangeFrom = null;
+    return 'retry';
+  }
+  const total = amrapReps + (state.lastAmrap || 0);
+  if (total >= GSLP_BASE_REPS * 2) {
+    const from = state.addedWeight;
+    state.addedWeight += GSLP_CHINUP_INCREMENT;
+    state.lastAmrap = null;
+    state.lastChange = 'levelup';
+    state.lastChangeFrom = from;
+    return 'levelup';
+  }
+  state.lastAmrap = amrapReps;
+  return 'hold';
+}
+
+// Warm-up: 50%/70%/85% of work weight, 5/3/2 reps. Barbell floors at the
+// empty bar; dumbbell rounds down to a real size Itamar actually owns.
+function gslpWarmupSteps(workWeight, isDumbbell) {
+  const pcts = [{ pct: 50, reps: 5 }, { pct: 70, reps: 3 }, { pct: 85, reps: 2 }];
+  return pcts.map(p => {
+    let w = workWeight * (p.pct / 100);
+    w = isDumbbell ? gslpRoundToDumbbell(w) : Math.max(GSLP_BARBELL_START, Math.round(w));
+    return { pct: p.pct, reps: p.reps, weight: w };
+  });
+}
+
+
+
 // and "same weight, fewer reps" as regression, instead of showing "same".
 function computeProgressBadge(curWeight, prevWeight, curRepsStr, prevRepsStr) {
   if (prevWeight === null || prevWeight === undefined) return { text: 'first log', cls: 'same' };
@@ -1332,6 +1578,9 @@ function renderBodyStatsScreen() {
 }
 
 document.getElementById('bs-log-btn').addEventListener('click', () => {
+  const logBtn = document.getElementById('bs-log-btn');
+  if (logBtn.disabled) return; // guards against a double-tap pushing two measurement entries
+
   const weightRaw = document.getElementById('bs-weight').value.trim();
   const heightRaw = document.getElementById('bs-height').value.trim();
   const waistRaw = document.getElementById('bs-waist').value.trim();
@@ -1356,6 +1605,7 @@ document.getElementById('bs-log-btn').addEventListener('click', () => {
     return;
   }
   errorEl.style.display = 'none';
+  logBtn.disabled = true;
 
   bodyStats.push({
     date: new Date().toISOString(),
@@ -1365,7 +1615,18 @@ document.getElementById('bs-log-btn').addEventListener('click', () => {
     neck,
     bodyFatPct: round1(bodyFatPctRaw)
   });
-  saveJSON('wl_body_stats', bodyStats);
+
+  try {
+    saveJSON('wl_body_stats', bodyStats);
+  } catch (err) {
+    bodyStats.pop();
+    errorEl.textContent = 'Saving failed — this usually means your device is out of storage space.';
+    errorEl.style.display = 'block';
+    console.warn('Body stats save failed:', err);
+    logBtn.disabled = false;
+    return;
+  }
+  logBtn.disabled = false;
   backupToServer();
   renderBodyStatsScreen();
 });
@@ -1375,6 +1636,271 @@ document.getElementById('btn-body-stats').addEventListener('click', () => {
   showScreen('screen-body-stats');
 });
 document.getElementById('btn-back-title-3').addEventListener('click', () => history.back());
+
+// --- GSLP ---
+
+const GSLP_DAYS = {
+  A: [
+    { id: 'bench', name: 'Bench press', kind: 'dumbbell' },
+    { id: 'row', name: 'Dumbbell row', kind: 'dumbbell' },
+    { id: 'squat', name: 'Squat', kind: 'barbell' },
+    { id: 'curls', name: 'Bicep curls', kind: 'accessory' }
+  ],
+  B: [
+    { id: 'ohp', name: 'Overhead press', kind: 'dumbbell' },
+    { id: 'chinup', name: 'Chin-ups', kind: 'chinup' },
+    { id: 'deadlift', name: 'Deadlift', kind: 'barbell-single' },
+    { id: 'dips', name: 'Dips', kind: 'accessory' }
+  ]
+};
+
+let gslpCurrentDay = null;
+
+function gslpChangeBadge(state) {
+  if (!state.lastChange) return '';
+  if (state.lastChange === 'started-weighted') {
+    return '<div class="gslp-change-badge up">&#8593; started weighted chin-ups</div>';
+  }
+  const isUp = state.lastChange === 'levelup';
+  const arrow = isUp ? '&#8593;' : '&#8595;';
+  const label = isUp ? 'up from ' + state.lastChangeFrom : 'deloaded from ' + state.lastChangeFrom;
+  return '<div class="gslp-change-badge ' + (isUp ? 'up' : 'down') + '">' + arrow + ' ' + label + ' last time</div>';
+}
+
+function gslpWarmupHTML(weight, isDumbbell) {
+  return gslpWarmupSteps(weight, isDumbbell).map(s =>
+    '<div class="gslp-warmup-step"><div class="gslp-warmup-w">' + s.weight + 'kg</div><div class="gslp-warmup-r">' + s.pct + '% \u00d7 ' + s.reps + '</div></div>'
+  ).join('');
+}
+
+function renderGslpCard(lift) {
+  const card = document.createElement('div');
+  card.dataset.id = lift.id;
+
+  if (lift.kind === 'accessory') {
+    card.className = 'gslp-card accessory';
+    card.innerHTML =
+      '<div class="gslp-name" style="margin-bottom:10px;">' + lift.name + '</div>' +
+      '<div class="gslp-done-row">' +
+        '<input class="gslp-free-input" data-field="weight" placeholder="weight">' +
+        '<input class="gslp-free-input" data-field="reps" placeholder="reps">' +
+        '<button type="button" class="done-btn" data-id="' + lift.id + '" style="margin-left:auto;">Done</button>' +
+      '</div>';
+    return card;
+  }
+
+  if (lift.kind === 'chinup') {
+    const state = gslpState.chinup;
+    card.className = 'gslp-card dumbbell';
+    const weightRow = state.weighted
+      ? '<div class="gslp-weight-pill"><input class="gslp-weight-input" id="gslp-w-chinup" type="number" value="' + state.addedWeight + '"><span class="gslp-weight-unit">kg added</span></div>'
+      : '<span style="font-size:13px;color:var(--text-secondary);">bodyweight (12+ reps unlocks weighted)</span>';
+    card.innerHTML =
+      '<div class="gslp-header-row"><div class="gslp-name">' + lift.name + '</div>' + weightRow + '</div>' +
+      gslpChangeBadge(state) +
+      '<div class="gslp-work-row" style="margin-top:12px;">' +
+        '<span class="gslp-set-label">2&times;7 + AMRAP</span>' +
+        '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0">' +
+        '<button type="button" class="done-btn" data-id="' + lift.id + '" style="margin-left:auto;">Done</button>' +
+      '</div>' +
+      '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
+    return card;
+  }
+
+  // barbell, barbell-single, dumbbell
+  const isDumbbell = lift.kind === 'dumbbell';
+  const state = gslpState[lift.id];
+  const weight = isDumbbell ? state.dumbbell : state.weight;
+  const unit = isDumbbell ? 'kg/hand' : 'kg';
+  card.className = 'gslp-card' + (isDumbbell ? ' dumbbell' : '');
+  const workLabel = lift.kind === 'barbell-single' ? 'AMRAP' : '2&times;7 + AMRAP';
+
+  card.innerHTML =
+    '<div class="gslp-header-row"><div class="gslp-name">' + lift.name + '</div>' +
+      '<div class="gslp-weight-pill"><input class="gslp-weight-input" id="gslp-w-' + lift.id + '" type="number" value="' + weight + '"><span class="gslp-weight-unit">' + unit + '</span></div>' +
+    '</div>' +
+    gslpChangeBadge(state) +
+    '<div class="gslp-warmup-label">warm-up</div>' +
+    '<div class="gslp-warmup-row" id="gslp-warmup-' + lift.id + '">' + gslpWarmupHTML(weight, isDumbbell) + '</div>' +
+    '<div class="gslp-work-row">' +
+      '<span class="gslp-set-label">' + workLabel + '</span>' +
+      '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0">' +
+      '<button type="button" class="done-btn" data-id="' + lift.id + '" style="margin-left:auto;">Done</button>' +
+    '</div>' +
+    '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
+
+  const weightInput = card.querySelector('#gslp-w-' + lift.id);
+  weightInput.addEventListener('input', () => {
+    const w = parseFloat(weightInput.value) || 0;
+    document.getElementById('gslp-warmup-' + lift.id).innerHTML = gslpWarmupHTML(w, isDumbbell);
+  });
+
+  return card;
+}
+
+function renderGslpDayScreen(day) {
+  gslpCurrentDay = day;
+  gslpDraft = {};
+  document.getElementById('gslp-day-label').textContent = 'Workout ' + day;
+  const container = document.getElementById('gslp-cards');
+  container.innerHTML = '';
+  GSLP_DAYS[day].forEach(lift => container.appendChild(renderGslpCard(lift)));
+  document.getElementById('gslp-save-btn').disabled = false;
+
+  container.querySelectorAll('.done-btn').forEach(btn => {
+    btn.addEventListener('click', () => gslpHandleDone(btn));
+  });
+}
+
+function gslpShowFailChoice(liftId, onChoice) {
+  const box = document.querySelector('.gslp-fail-box[data-id="' + liftId + '"]');
+  box.style.display = 'block';
+  box.innerHTML =
+    '<div class="gslp-fail-msg">Didn\u2019t reach 7 reps \u2014 what now?</div>' +
+    '<div class="gslp-fail-choices">' +
+      '<button type="button" class="gslp-fail-choice-btn" data-choice="deload">Deload 10%</button>' +
+      '<button type="button" class="gslp-fail-choice-btn" data-choice="retry">Retry same weight</button>' +
+    '</div>';
+  box.querySelectorAll('.gslp-fail-choice-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      box.querySelectorAll('.gslp-fail-choice-btn').forEach(x => x.classList.remove('picked'));
+      b.classList.add('picked');
+      onChoice(b.dataset.choice);
+    });
+  });
+}
+
+function gslpCelebrate(btn) {
+  const card = btn.closest('.gslp-card');
+  btn.classList.add('completed');
+  btn.innerHTML = DONE_CHECK_ICON;
+  playRewardSound();
+  btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
+  card.classList.remove('completed-flash'); void card.offsetWidth; card.classList.add('completed-flash');
+  spawnRewardParticles(btn.parentElement);
+}
+
+function gslpHandleDone(btn) {
+  const liftId = btn.dataset.id;
+  const card = btn.closest('.gslp-card');
+  const lift = GSLP_DAYS[gslpCurrentDay].find(l => l.id === liftId);
+
+  if (lift.kind === 'accessory') {
+    const weight = card.querySelector('[data-field="weight"]').value;
+    const reps = card.querySelector('[data-field="reps"]').value;
+    gslpDraft[liftId] = { weight, reps };
+    gslpCelebrate(btn);
+    return;
+  }
+
+  const amrapInput = card.querySelector('.gslp-amrap-input[data-id="' + liftId + '"]');
+  const amrap = parseInt(amrapInput.value, 10);
+  const failBox = card.querySelector('.gslp-fail-box[data-id="' + liftId + '"]');
+  if (isNaN(amrap)) {
+    amrapInput.style.borderColor = '#D97A2E';
+    return;
+  }
+  amrapInput.style.borderColor = '';
+
+  const weightOverride = lift.kind === 'chinup'
+    ? (gslpState.chinup.weighted ? parseFloat(document.getElementById('gslp-w-chinup').value) : null)
+    : parseFloat(document.getElementById('gslp-w-' + liftId).value);
+
+  const isDumbbellOnly = lift.kind === 'dumbbell';
+  const needsChoice = amrap < GSLP_BASE_REPS && !isDumbbellOnly &&
+    !(lift.kind === 'chinup' && !gslpState.chinup.weighted);
+
+  if (needsChoice) {
+    gslpShowFailChoice(liftId, (choice) => {
+      gslpDraft[liftId] = { amrap, weightOverride, failChoice: choice };
+      failBox.style.display = 'none';
+      gslpCelebrate(btn);
+    });
+    return;
+  }
+
+  if (isDumbbellOnly && amrap < GSLP_BASE_REPS) {
+    const clone = JSON.parse(JSON.stringify(gslpState[liftId]));
+    if (weightOverride) clone.dumbbell = weightOverride;
+    progressDumbbellLift(clone, amrap);
+    failBox.style.display = 'block';
+    failBox.className = 'gslp-fail-auto';
+    failBox.textContent = 'Didn\u2019t reach 7 reps \u2014 next session drops to ' + clone.dumbbell + 'kg/hand.';
+  } else {
+    failBox.style.display = 'none';
+  }
+
+  gslpDraft[liftId] = { amrap, weightOverride, failChoice: null };
+  gslpCelebrate(btn);
+}
+
+function gslpSaveSession() {
+  const day = gslpCurrentDay;
+  const logLifts = {};
+
+  GSLP_DAYS[day].forEach(lift => {
+    const draft = gslpDraft[lift.id];
+    if (!draft) return; // skipped this exercise
+
+    if (lift.kind === 'accessory') {
+      logLifts[lift.id] = { weight: draft.weight, reps: draft.reps };
+      return;
+    }
+
+    let state, event;
+    if (lift.kind === 'dumbbell') {
+      state = gslpState[lift.id];
+      if (draft.weightOverride) state.dumbbell = draft.weightOverride;
+      event = progressDumbbellLift(state, draft.amrap);
+      logLifts[lift.id] = { weight: state.dumbbell, amrap: draft.amrap, event };
+    } else if (lift.kind === 'chinup') {
+      state = gslpState.chinup;
+      if (state.weighted && draft.weightOverride) state.addedWeight = draft.weightOverride;
+      event = progressChinup(state, draft.amrap, draft.failChoice);
+      logLifts[lift.id] = { weighted: state.weighted, addedWeight: state.addedWeight, amrap: draft.amrap, event };
+    } else {
+      state = gslpState[lift.id];
+      if (draft.weightOverride) state.weight = draft.weightOverride;
+      event = progressBarbellLift(state, draft.amrap, GSLP_BARBELL_INCREMENT, draft.failChoice);
+      logLifts[lift.id] = { weight: state.weight, amrap: draft.amrap, event };
+    }
+  });
+
+  gslpLog.push({ date: new Date().toISOString(), day, lifts: logLifts });
+  gslpState.nextDay = day === 'A' ? 'B' : 'A';
+  gslpDraft = {};
+
+  try {
+    saveJSON('wl_gslp_state', gslpState);
+    saveJSON('wl_gslp_log', gslpLog);
+  } catch (err) {
+    alert('Saving failed — this usually means your device is out of storage space.');
+    console.warn('GSLP save failed:', err);
+    return;
+  }
+
+  backupToServer();
+  showScreen('screen-title');
+}
+
+document.getElementById('btn-gslp').addEventListener('click', () => showScreen('screen-gslp-pick'));
+document.getElementById('btn-back-title-gslp').addEventListener('click', () => history.back());
+document.getElementById('gslp-pick-a').addEventListener('click', () => {
+  renderGslpDayScreen('A');
+  showScreen('screen-gslp-day');
+});
+document.getElementById('gslp-pick-b').addEventListener('click', () => {
+  renderGslpDayScreen('B');
+  showScreen('screen-gslp-day');
+});
+document.getElementById('btn-back-gslp-pick').addEventListener('click', () => history.back());
+document.getElementById('gslp-save-btn').addEventListener('click', () => {
+  const btn = document.getElementById('gslp-save-btn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  gslpSaveSession();
+});
+
 
 document.getElementById('btn-start').addEventListener('click', () => {
   renderSessionScreen();
