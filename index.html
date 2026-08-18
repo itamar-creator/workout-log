@@ -717,9 +717,32 @@ function gslpDefaultState() {
     chinup: { weighted: false, addedWeight: 0, lastAmrap: null, lastChange: null, lastChangeFrom: null }
   };
 }
-let gslpState = loadJSON('wl_gslp_state', gslpDefaultState());
+function gslpMergeState(stored) {
+  const defaults = gslpDefaultState();
+  if (!stored || typeof stored !== 'object') return defaults;
+  const merged = { nextDay: stored.nextDay === 'B' ? 'B' : 'A' };
+  Object.keys(defaults).forEach(key => {
+    if (key === 'nextDay') return;
+    merged[key] = Object.assign({}, defaults[key], stored[key] || {});
+  });
+  return merged;
+}
+
+// Merge whatever was stored over a fresh default rather than trusting it
+// wholesale — state saved by an earlier version of the app may be missing
+// lifts or fields added since, and reading those would crash the render.
+function gslpLoadState() {
+  return gslpMergeState(loadJSON('wl_gslp_state', null));
+}
+let gslpState = gslpLoadState();
 let gslpLog = loadJSON('wl_gslp_log', []); // [{ date, day, lifts: { squat: {weight, reps, event}, ... } }]
-let gslpDraft = {}; // in-progress AMRAP entries + fail-choices for the current unsaved GSLP session
+let gslpDraft = loadJSON('wl_gslp_draft', {}); // in-progress AMRAP entries + fail-choices for the current unsaved GSLP session
+let gslpDraftDay = loadJSON('wl_gslp_draft_day', null); // which day ('A'/'B') the draft above belongs to
+
+function persistGslpDraft() {
+  saveJSON('wl_gslp_draft', gslpDraft);
+  saveJSON('wl_gslp_draft_day', gslpDraftDay);
+}
 
 function getAllExercises() {
   const all = [...BUILT_IN_EXERCISES, ...customExercises];
@@ -799,7 +822,7 @@ async function restoreFromServer() {
     exerciseOrder = data.exerciseOrder || null;
     historyArchive = data.historyArchive || [];
     bodyStats = data.bodyStats || [];
-    gslpState = data.gslpState || gslpDefaultState();
+    gslpState = gslpMergeState(data.gslpState);
     gslpLog = data.gslpLog || [];
     saveJSON('wl_sessions', sessions);
     saveJSON('wl_flags', flags);
@@ -843,7 +866,7 @@ async function restorePreviousFromServer() {
     exerciseOrder = data.exerciseOrder || null;
     historyArchive = data.historyArchive || [];
     bodyStats = data.bodyStats || [];
-    gslpState = data.gslpState || gslpDefaultState();
+    gslpState = gslpMergeState(data.gslpState);
     gslpLog = data.gslpLog || [];
     saveJSON('wl_sessions', sessions);
     saveJSON('wl_flags', flags);
@@ -1778,41 +1801,52 @@ function gslpWarmupHTML(weight, isDumbbell) {
 function renderGslpCard(lift) {
   const card = document.createElement('div');
   card.dataset.id = lift.id;
+  const draft = gslpDraft[lift.id];
 
   if (lift.kind === 'accessory') {
     card.className = 'gslp-card accessory';
     card.innerHTML =
       '<div class="gslp-name" style="margin-bottom:10px;">' + lift.name + '</div>' +
       '<div class="gslp-done-row">' +
-        '<input class="gslp-free-input" data-field="weight" placeholder="weight">' +
-        '<input class="gslp-free-input" data-field="reps" placeholder="reps">' +
-        '<button type="button" class="done-btn" data-id="' + lift.id + '" style="margin-left:auto;">Done</button>' +
+        '<input class="gslp-free-input" data-field="weight" placeholder="weight" value="' + (draft && draft.weight ? draft.weight : '') + '">' +
+        '<input class="gslp-free-input" data-field="reps" placeholder="reps" value="' + (draft && draft.reps ? draft.reps : '') + '">' +
+        '<button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '" style="margin-left:auto;">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button>' +
       '</div>';
+    card.querySelectorAll('.gslp-free-input').forEach(input => {
+      input.addEventListener('input', () => {
+        gslpDraft[lift.id] = gslpDraft[lift.id] || {};
+        gslpDraft[lift.id][input.dataset.field] = input.value;
+        persistGslpDraft();
+      });
+    });
     return card;
   }
 
   if (lift.kind === 'chinup') {
     const state = gslpState.chinup;
     card.className = 'gslp-card dumbbell';
+    const addedWeightVal = draft && draft.weightOverride != null ? draft.weightOverride : state.addedWeight;
     const weightRow = state.weighted
-      ? '<div class="gslp-weight-pill"><input class="gslp-weight-input" id="gslp-w-chinup" type="number" value="' + state.addedWeight + '"><span class="gslp-weight-unit">kg added</span></div>'
+      ? '<div class="gslp-weight-pill"><input class="gslp-weight-input" id="gslp-w-chinup" type="number" value="' + addedWeightVal + '"><span class="gslp-weight-unit">kg added</span></div>'
       : '<span style="font-size:13px;color:var(--text-secondary);">bodyweight (12+ reps unlocks weighted)</span>';
     card.innerHTML =
       '<div class="gslp-header-row"><div class="gslp-name">' + lift.name + '</div>' + weightRow + '</div>' +
       gslpChangeBadge(state) +
       '<div class="gslp-work-row" style="margin-top:12px;">' +
         '<span class="gslp-set-label">2&times;7 + AMRAP</span>' +
-        '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0">' +
-        '<button type="button" class="done-btn" data-id="' + lift.id + '" style="margin-left:auto;">Done</button>' +
+        '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + (draft && draft.amrap != null ? draft.amrap : '') + '">' +
+        '<button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '" style="margin-left:auto;">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button>' +
       '</div>' +
       '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
+    gslpWireDraftInputs(card, lift.id, 'gslp-w-chinup');
     return card;
   }
 
   // barbell, barbell-single, dumbbell
   const isDumbbell = lift.kind === 'dumbbell';
   const state = gslpState[lift.id];
-  const weight = isDumbbell ? state.dumbbell : state.weight;
+  const defaultWeight = isDumbbell ? state.dumbbell : state.weight;
+  const weight = draft && draft.weightOverride != null ? draft.weightOverride : defaultWeight;
   const unit = isDumbbell ? 'kg/hand' : 'kg';
   card.className = 'gslp-card' + (isDumbbell ? ' dumbbell' : '');
   const workLabel = lift.kind === 'barbell-single' ? 'AMRAP' : '2&times;7 + AMRAP';
@@ -1826,23 +1860,47 @@ function renderGslpCard(lift) {
     '<div class="gslp-warmup-row" id="gslp-warmup-' + lift.id + '">' + gslpWarmupHTML(weight, isDumbbell) + '</div>' +
     '<div class="gslp-work-row">' +
       '<span class="gslp-set-label">' + workLabel + '</span>' +
-      '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0">' +
-      '<button type="button" class="done-btn" data-id="' + lift.id + '" style="margin-left:auto;">Done</button>' +
+      '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + (draft && draft.amrap != null ? draft.amrap : '') + '">' +
+      '<button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '" style="margin-left:auto;">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button>' +
     '</div>' +
     '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
 
-  const weightInput = card.querySelector('#gslp-w-' + lift.id);
-  weightInput.addEventListener('input', () => {
-    const w = parseFloat(weightInput.value) || 0;
-    document.getElementById('gslp-warmup-' + lift.id).innerHTML = gslpWarmupHTML(w, isDumbbell);
-  });
+  gslpWireDraftInputs(card, lift.id, 'gslp-w-' + lift.id, isDumbbell);
 
   return card;
 }
 
+// Wires the weight and AMRAP inputs on a structured card to persist to the
+// draft on every keystroke (not just when Done is tapped), so an
+// in-progress edit survives navigating away before saving.
+function gslpWireDraftInputs(card, liftId, weightInputId, isDumbbell) {
+  const weightInput = card.querySelector('#' + weightInputId);
+  weightInput.addEventListener('input', () => {
+    const w = parseFloat(weightInput.value) || 0;
+    const warmupEl = document.getElementById('gslp-warmup-' + liftId);
+    if (warmupEl) warmupEl.innerHTML = gslpWarmupHTML(w, !!isDumbbell);
+    gslpDraft[liftId] = gslpDraft[liftId] || {};
+    gslpDraft[liftId].weightOverride = w || null;
+    persistGslpDraft();
+  });
+
+  const amrapInput = card.querySelector('.gslp-amrap-input[data-id="' + liftId + '"]');
+  if (amrapInput) {
+    amrapInput.addEventListener('input', () => {
+      gslpDraft[liftId] = gslpDraft[liftId] || {};
+      gslpDraft[liftId].amrap = amrapInput.value === '' ? null : parseInt(amrapInput.value, 10);
+      persistGslpDraft();
+    });
+  }
+}
+
 function renderGslpDayScreen(day) {
   gslpCurrentDay = day;
-  gslpDraft = {};
+  if (gslpDraftDay !== day) {
+    gslpDraft = {};
+    gslpDraftDay = day;
+    persistGslpDraft();
+  }
   document.getElementById('gslp-day-label').textContent = 'Workout ' + day;
   const container = document.getElementById('gslp-cards');
   container.innerHTML = '';
@@ -1856,6 +1914,7 @@ function renderGslpDayScreen(day) {
 
 function gslpShowFailChoice(liftId, onChoice) {
   const box = document.querySelector('.gslp-fail-box[data-id="' + liftId + '"]');
+  box.className = 'gslp-fail-box'; // reset — the dumbbell auto-fail path overwrites this
   box.style.display = 'block';
   box.innerHTML =
     '<div class="gslp-fail-msg">Didn\u2019t reach 7 reps \u2014 what now?</div>' +
@@ -1890,7 +1949,8 @@ function gslpHandleDone(btn) {
   if (lift.kind === 'accessory') {
     const weight = card.querySelector('[data-field="weight"]').value;
     const reps = card.querySelector('[data-field="reps"]').value;
-    gslpDraft[liftId] = { weight, reps };
+    gslpDraft[liftId] = { weight, reps, done: true };
+    persistGslpDraft();
     gslpCelebrate(btn);
     return;
   }
@@ -1914,7 +1974,8 @@ function gslpHandleDone(btn) {
 
   if (needsChoice) {
     gslpShowFailChoice(liftId, (choice) => {
-      gslpDraft[liftId] = { amrap, weightOverride, failChoice: choice };
+      gslpDraft[liftId] = { amrap, weightOverride, failChoice: choice, done: true };
+      persistGslpDraft();
       failBox.style.display = 'none';
       gslpCelebrate(btn);
     });
@@ -1929,60 +1990,90 @@ function gslpHandleDone(btn) {
     failBox.className = 'gslp-fail-auto';
     failBox.textContent = 'Didn\u2019t reach 7 reps \u2014 next session drops to ' + clone.dumbbell + 'kg/hand.';
   } else {
+    failBox.className = 'gslp-fail-box';
     failBox.style.display = 'none';
   }
 
-  gslpDraft[liftId] = { amrap, weightOverride, failChoice: null };
+  gslpDraft[liftId] = { amrap, weightOverride, failChoice: null, done: true };
+  persistGslpDraft();
   gslpCelebrate(btn);
 }
 
 function gslpSaveSession() {
   const day = gslpCurrentDay;
   const logLifts = {};
+  let anyLogged = false;
 
   GSLP_DAYS[day].forEach(lift => {
     const draft = gslpDraft[lift.id];
-    if (!draft) return; // skipped this exercise
+    // Only lifts explicitly marked Done count. A draft can also exist from
+    // merely typing in a field, and those must NOT be processed — an
+    // untouched amrap is null, and `null < 7` is true in JS, which would
+    // otherwise record a failed set the user never actually performed.
+    if (!draft || !draft.done) return;
 
     if (lift.kind === 'accessory') {
       logLifts[lift.id] = { weight: draft.weight, reps: draft.reps };
+      anyLogged = true;
       return;
     }
+
+    if (typeof draft.amrap !== 'number' || isNaN(draft.amrap)) return;
+    anyLogged = true;
+
+    // A weight override of 0/NaN is unusable — fall back to the stored weight.
+    const override = (typeof draft.weightOverride === 'number' && draft.weightOverride > 0)
+      ? draft.weightOverride : null;
 
     let state, event;
     if (lift.kind === 'dumbbell') {
       state = gslpState[lift.id];
-      if (draft.weightOverride) state.dumbbell = draft.weightOverride;
+      if (override) state.dumbbell = override;
       event = progressDumbbellLift(state, draft.amrap);
       logLifts[lift.id] = { weight: state.dumbbell, amrap: draft.amrap, event };
     } else if (lift.kind === 'chinup') {
       state = gslpState.chinup;
-      if (state.weighted && draft.weightOverride) state.addedWeight = draft.weightOverride;
+      if (state.weighted && override) state.addedWeight = override;
       event = progressChinup(state, draft.amrap, draft.failChoice);
       logLifts[lift.id] = { weighted: state.weighted, addedWeight: state.addedWeight, amrap: draft.amrap, event };
     } else {
       state = gslpState[lift.id];
-      if (draft.weightOverride) state.weight = draft.weightOverride;
+      if (override) state.weight = override;
       event = progressBarbellLift(state, draft.amrap, GSLP_BARBELL_INCREMENT, draft.failChoice);
       logLifts[lift.id] = { weight: state.weight, amrap: draft.amrap, event };
     }
   });
 
+  if (!anyLogged) {
+    alert('Nothing to save yet — tap Done on at least one exercise first.');
+    document.getElementById('gslp-save-btn').disabled = false;
+    return;
+  }
+
+  // Snapshot state before mutating, so a failed write can be rolled back
+  // cleanly rather than leaving progression half-applied in memory.
+  const stateSnapshot = JSON.parse(JSON.stringify(gslpState));
+
   gslpLog.push({ date: new Date().toISOString(), day, lifts: logLifts });
   gslpState.nextDay = day === 'A' ? 'B' : 'A';
-  gslpDraft = {};
 
   try {
     saveJSON('wl_gslp_state', gslpState);
     saveJSON('wl_gslp_log', gslpLog);
+    gslpDraft = {};
+    gslpDraftDay = null;
+    persistGslpDraft();
   } catch (err) {
+    gslpLog.pop();
+    gslpState = stateSnapshot; // roll back the progression changes too
     alert('Saving failed — this usually means your device is out of storage space.');
     console.warn('GSLP save failed:', err);
+    document.getElementById('gslp-save-btn').disabled = false;
     return;
   }
 
   backupToServer();
-  showScreen('screen-title');
+  resetToTitle();
 }
 
 function renderGslpPickScreen() {
@@ -2483,14 +2574,18 @@ document.getElementById('btn-back-title').addEventListener('click', () => histor
 // from any other screen it steps back one screen within the app.
 history.replaceState({ trail: [] }, '', '#screen-title');
 
-window.addEventListener('popstate', () => {
-  navTrail.pop();
+window.addEventListener('popstate', (event) => {
+  // Trust whatever the browser actually landed on — don't guess by manually
+  // popping our own trail and don't rewrite history from in here. The state
+  // object was already set correctly by whichever pushState/replaceState
+  // call created this entry, so reading it directly can't drift out of sync
+  // the way manual bookkeeping did.
+  navTrail = (event.state && event.state.trail) ? event.state.trail : [];
   if (navTrail.length === 0) {
     showScreenDOM('screen-title');
   } else {
     const prevScreen = navTrail[navTrail.length - 1];
     showScreenDOM(prevScreen);
-    history.pushState({ trail: [...navTrail] }, '', '#' + prevScreen);
     if (prevScreen === 'screen-history') renderHistoryScreen();
     if (prevScreen === 'screen-gslp-history') renderGslpHistoryScreen();
     if (prevScreen === 'screen-gslp-pick') renderGslpPickScreen();

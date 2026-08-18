@@ -1,4 +1,4 @@
-const CACHE = 'workout-log-v9';
+const CACHE = 'workout-log-v12';
 const ASSETS = [
   './', './index.html', './manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png',
