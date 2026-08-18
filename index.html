@@ -2337,24 +2337,77 @@ function attachDragHandlers(row, listEl) {
     dragState = {
       row, listEl, ghost,
       offsetX: startX - rect.left,
-      offsetY: startY - rect.top
+      offsetY: startY - rect.top,
+      pointerY: startY,
+      scrollRaf: null
     };
+
+    startEdgeAutoScroll();
 
     document.addEventListener('pointermove', onDragMove);
     document.addEventListener('pointerup', onDragEnd);
     document.addEventListener('pointercancel', onDragEnd);
   }
 
+  // While dragging near the top or bottom of the screen, scroll the page
+  // continuously so you can move an item past the visible range without
+  // dropping it, scrolling by hand, and picking it up again. Speed ramps up
+  // the closer the finger gets to the edge.
+  const EDGE_ZONE = 90;      // px from the viewport edge where scrolling kicks in
+  const MAX_SCROLL_SPEED = 14; // px per frame at the very edge
+
+  function startEdgeAutoScroll() {
+    function step() {
+      if (!dragState || dragState.row !== row) return;
+      const y = dragState.pointerY;
+      const vh = window.innerHeight;
+      let delta = 0;
+
+      if (y < EDGE_ZONE) {
+        delta = -MAX_SCROLL_SPEED * (1 - y / EDGE_ZONE);
+      } else if (y > vh - EDGE_ZONE) {
+        delta = MAX_SCROLL_SPEED * (1 - (vh - y) / EDGE_ZONE);
+      }
+
+      if (delta !== 0) {
+        const before = window.scrollY;
+        window.scrollBy(0, delta);
+        // If the page actually moved, the rows shifted under the finger —
+        // re-run the reorder check so the placeholder keeps up.
+        if (window.scrollY !== before) reorderAtPointer(y);
+      }
+
+      dragState.scrollRaf = requestAnimationFrame(step);
+    }
+    dragState.scrollRaf = requestAnimationFrame(step);
+  }
+
+  function stopEdgeAutoScroll() {
+    if (dragState && dragState.scrollRaf) {
+      cancelAnimationFrame(dragState.scrollRaf);
+      dragState.scrollRaf = null;
+    }
+  }
+
   function onDragMove(e) {
     if (!dragState || dragState.row !== row) return;
     const { ghost, offsetX, offsetY } = dragState;
+    dragState.pointerY = e.clientY;
     ghost.style.left = (e.clientX - offsetX) + 'px';
     ghost.style.top = (e.clientY - offsetY) + 'px';
+    reorderAtPointer(e.clientY);
+  }
+
+  // Move the dragged row to wherever the given viewport Y lands in the list.
+  // Called both on pointer movement and on each auto-scroll frame, since
+  // scrolling moves the rows under a stationary finger.
+  function reorderAtPointer(clientY) {
+    if (!dragState || dragState.row !== row) return;
 
     const rows = Array.from(listEl.children).filter(r => r !== row);
     const hoveredRow = rows.find(r => {
       const rBox = r.getBoundingClientRect();
-      return e.clientY >= rBox.top && e.clientY <= rBox.bottom;
+      return clientY >= rBox.top && clientY <= rBox.bottom;
     });
     if (hoveredRow) {
       const hBox = hoveredRow.getBoundingClientRect();
@@ -2365,7 +2418,7 @@ function attachDragHandlers(row, listEl) {
       const firstRects = new Map();
       otherRows.forEach(r => firstRects.set(r, r.getBoundingClientRect()));
 
-      if (e.clientY < hoveredMid) {
+      if (clientY < hoveredMid) {
         listEl.insertBefore(row, hoveredRow);
       } else {
         listEl.insertBefore(row, hoveredRow.nextSibling);
@@ -2390,6 +2443,7 @@ function attachDragHandlers(row, listEl) {
 
   function onDragEnd() {
     if (!dragState || dragState.row !== row) return;
+    stopEdgeAutoScroll();
     dragState.ghost.remove();
     row.classList.remove('dragging-placeholder');
     const newActiveOrder = Array.from(listEl.children).map(r => r.dataset.id);
@@ -2407,6 +2461,7 @@ function renderManageExercisesScreen() {
   // Defensive cleanup: remove any stray ghosts/drag state from an interrupted
   // gesture on a previous visit, so nothing can accumulate indefinitely.
   document.querySelectorAll('.drag-ghost').forEach(g => g.remove());
+  if (dragState && dragState.scrollRaf) cancelAnimationFrame(dragState.scrollRaf);
   dragState = null;
 
   const activeList = document.getElementById('active-exercise-list');
