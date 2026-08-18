@@ -340,7 +340,9 @@
   .exercise-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 12px;
+    row-gap: 8px;
     background: var(--card);
     border-radius: 14px;
     padding: 10px 14px;
@@ -383,18 +385,18 @@
     object-fit: cover;
   }
   .exercise-row .row-name {
-    flex: 1;
-    min-width: 0;
+    flex: 1 1 auto;
+    min-width: 110px;
     font-size: 15px;
     color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .exercise-row .row-actions {
     display: flex;
     gap: 8px;
     flex-shrink: 0;
+    margin-left: auto;
   }
   .row-action-btn {
     font-family: 'Inter', sans-serif;
