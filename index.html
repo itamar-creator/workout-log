@@ -219,6 +219,7 @@
   .gslp-fail-auto { margin-top: 10px; padding: 10px; background: #F0E4D8; border-radius: 10px; font-size: 12.5px; color: #8A5A3A; }
   .gslp-free-input { width: 72px; height: 36px; border-radius: 10px; border: 1.5px solid var(--text-secondary); text-align: center; font-size: 14px; }
   .gslp-done-row { display: flex; align-items: center; gap: 10px; }
+  .gslp-done-wrap { position: relative; flex-shrink: 0; margin-left: auto; display: inline-flex; }
   .gslp-next-label {
     display: none;
     position: absolute;
@@ -736,12 +737,17 @@ function gslpLoadState() {
 }
 let gslpState = gslpLoadState();
 let gslpLog = loadJSON('wl_gslp_log', []); // [{ date, day, lifts: { squat: {weight, reps, event}, ... } }]
-let gslpDraft = loadJSON('wl_gslp_draft', {}); // in-progress AMRAP entries + fail-choices for the current unsaved GSLP session
-let gslpDraftDay = loadJSON('wl_gslp_draft_day', null); // which day ('A'/'B') the draft above belongs to
+// In-progress (unsaved) GSLP entries, kept separately per workout day so
+// peeking at the other day never discards what you've already entered.
+let gslpDrafts = loadJSON('wl_gslp_drafts', { A: {}, B: {} });
+if (!gslpDrafts || typeof gslpDrafts !== 'object') gslpDrafts = { A: {}, B: {} };
+if (!gslpDrafts.A) gslpDrafts.A = {};
+if (!gslpDrafts.B) gslpDrafts.B = {};
+let gslpDraft = {}; // points at gslpDrafts[gslpCurrentDay] once a day is opened
 
 function persistGslpDraft() {
-  saveJSON('wl_gslp_draft', gslpDraft);
-  saveJSON('wl_gslp_draft_day', gslpDraftDay);
+  if (gslpCurrentDay) gslpDrafts[gslpCurrentDay] = gslpDraft;
+  saveJSON('wl_gslp_drafts', gslpDrafts);
 }
 
 function getAllExercises() {
@@ -1032,6 +1038,8 @@ function playRewardSound() {
   sound.play().catch(() => {});
 }
 
+const DONE_CHECK_ICON = '<svg width="18" height="18" viewBox="0 0 20 20"><path d="M5 10L8.5 13.5L15 6.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+
 const REWARD_PARTICLES = ['🎉', '✨', '💪', '⭐', '🔥'];
 
 function spawnRewardParticles(container) {
@@ -1113,8 +1121,6 @@ function renderSessionScreen() {
       saveJSON('wl_session_draft', sessionDraft);
     });
   });
-
-const DONE_CHECK_ICON = '<svg width="18" height="18" viewBox="0 0 20 20"><path d="M5 10L8.5 13.5L15 6.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
 
   cardsEl.querySelectorAll('.done-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1781,6 +1787,12 @@ const GSLP_DAYS = {
 
 let gslpCurrentDay = null;
 
+function gslpEscapeAttr(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function gslpChangeBadge(state) {
   if (!state.lastChange) return '';
   if (state.lastChange === 'started-weighted') {
@@ -1808,9 +1820,9 @@ function renderGslpCard(lift) {
     card.innerHTML =
       '<div class="gslp-name" style="margin-bottom:10px;">' + lift.name + '</div>' +
       '<div class="gslp-done-row">' +
-        '<input class="gslp-free-input" data-field="weight" placeholder="weight" value="' + (draft && draft.weight ? draft.weight : '') + '">' +
-        '<input class="gslp-free-input" data-field="reps" placeholder="reps" value="' + (draft && draft.reps ? draft.reps : '') + '">' +
-        '<button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '" style="margin-left:auto;">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button>' +
+        '<input class="gslp-free-input" data-field="weight" placeholder="weight" value="' + gslpEscapeAttr(draft && draft.weight) + '">' +
+        '<input class="gslp-free-input" data-field="reps" placeholder="reps" value="' + gslpEscapeAttr(draft && draft.reps) + '">' +
+        '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
       '</div>';
     card.querySelectorAll('.gslp-free-input').forEach(input => {
       input.addEventListener('input', () => {
@@ -1835,7 +1847,7 @@ function renderGslpCard(lift) {
       '<div class="gslp-work-row" style="margin-top:12px;">' +
         '<span class="gslp-set-label">2&times;7 + AMRAP</span>' +
         '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + (draft && draft.amrap != null ? draft.amrap : '') + '">' +
-        '<button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '" style="margin-left:auto;">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button>' +
+        '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
       '</div>' +
       '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
     gslpWireDraftInputs(card, lift.id, 'gslp-w-chinup');
@@ -1861,7 +1873,7 @@ function renderGslpCard(lift) {
     '<div class="gslp-work-row">' +
       '<span class="gslp-set-label">' + workLabel + '</span>' +
       '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + (draft && draft.amrap != null ? draft.amrap : '') + '">' +
-      '<button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '" style="margin-left:auto;">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button>' +
+      '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
     '</div>' +
     '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
 
@@ -1874,15 +1886,19 @@ function renderGslpCard(lift) {
 // draft on every keystroke (not just when Done is tapped), so an
 // in-progress edit survives navigating away before saving.
 function gslpWireDraftInputs(card, liftId, weightInputId, isDumbbell) {
+  // Bodyweight chin-ups have no weight input at all — guard rather than
+  // assume, or the null reference aborts the whole day's render.
   const weightInput = card.querySelector('#' + weightInputId);
-  weightInput.addEventListener('input', () => {
-    const w = parseFloat(weightInput.value) || 0;
-    const warmupEl = document.getElementById('gslp-warmup-' + liftId);
-    if (warmupEl) warmupEl.innerHTML = gslpWarmupHTML(w, !!isDumbbell);
-    gslpDraft[liftId] = gslpDraft[liftId] || {};
-    gslpDraft[liftId].weightOverride = w || null;
-    persistGslpDraft();
-  });
+  if (weightInput) {
+    weightInput.addEventListener('input', () => {
+      const w = parseFloat(weightInput.value) || 0;
+      const warmupEl = document.getElementById('gslp-warmup-' + liftId);
+      if (warmupEl) warmupEl.innerHTML = gslpWarmupHTML(w, !!isDumbbell);
+      gslpDraft[liftId] = gslpDraft[liftId] || {};
+      gslpDraft[liftId].weightOverride = w || null;
+      persistGslpDraft();
+    });
+  }
 
   const amrapInput = card.querySelector('.gslp-amrap-input[data-id="' + liftId + '"]');
   if (amrapInput) {
@@ -1896,15 +1912,26 @@ function gslpWireDraftInputs(card, liftId, weightInputId, isDumbbell) {
 
 function renderGslpDayScreen(day) {
   gslpCurrentDay = day;
-  if (gslpDraftDay !== day) {
-    gslpDraft = {};
-    gslpDraftDay = day;
-    persistGslpDraft();
-  }
+  if (!gslpDrafts[day]) gslpDrafts[day] = {};
+  gslpDraft = gslpDrafts[day];
   document.getElementById('gslp-day-label').textContent = 'Workout ' + day;
   const container = document.getElementById('gslp-cards');
   container.innerHTML = '';
-  GSLP_DAYS[day].forEach(lift => container.appendChild(renderGslpCard(lift)));
+  GSLP_DAYS[day].forEach(lift => {
+    // Isolate each card: a failure in one must not abort the whole render
+    // and leave the screen blank (which previously made navigation appear
+    // frozen, since showScreen never got reached).
+    try {
+      container.appendChild(renderGslpCard(lift));
+    } catch (err) {
+      console.warn('Failed to render GSLP card:', lift.id, err);
+      const fallback = document.createElement('div');
+      fallback.className = 'gslp-card';
+      fallback.innerHTML = '<div class="gslp-name">' + lift.name + '</div>' +
+        '<div style="font-size:12.5px;color:#8A5A3A;margin-top:6px;">Couldn\u2019t load this exercise.</div>';
+      container.appendChild(fallback);
+    }
+  });
   document.getElementById('gslp-save-btn').disabled = false;
 
   container.querySelectorAll('.done-btn').forEach(btn => {
@@ -1938,13 +1965,35 @@ function gslpCelebrate(btn) {
   playRewardSound();
   btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
   card.classList.remove('completed-flash'); void card.offsetWidth; card.classList.add('completed-flash');
-  spawnRewardParticles(btn.parentElement);
+  spawnRewardParticles(btn.closest('.gslp-done-wrap') || btn.parentElement);
+}
+
+// Undoing a Done tap is a correction, not an achievement — revert quietly,
+// with no sound or animation (same as the free-session cards).
+function gslpUncelebrate(btn) {
+  btn.classList.remove('completed', 'pop');
+  btn.innerHTML = 'Done';
 }
 
 function gslpHandleDone(btn) {
   const liftId = btn.dataset.id;
   const card = btn.closest('.gslp-card');
+  if (!gslpCurrentDay || !GSLP_DAYS[gslpCurrentDay]) return; // no day open — nothing to record against
   const lift = GSLP_DAYS[gslpCurrentDay].find(l => l.id === liftId);
+  if (!lift) return;
+
+  // Already marked done → this tap is an undo.
+  if (btn.classList.contains('completed')) {
+    if (gslpDraft[liftId]) {
+      gslpDraft[liftId].done = false;
+      gslpDraft[liftId].failChoice = null;
+      persistGslpDraft();
+    }
+    const box = card.querySelector('.gslp-fail-box[data-id="' + liftId + '"], .gslp-fail-auto[data-id="' + liftId + '"]');
+    if (box) { box.className = 'gslp-fail-box'; box.style.display = 'none'; }
+    gslpUncelebrate(btn);
+    return;
+  }
 
   if (lift.kind === 'accessory') {
     const weight = card.querySelector('[data-field="weight"]').value;
@@ -2001,6 +2050,10 @@ function gslpHandleDone(btn) {
 
 function gslpSaveSession() {
   const day = gslpCurrentDay;
+  if (!day || !GSLP_DAYS[day]) {
+    document.getElementById('gslp-save-btn').disabled = false;
+    return;
+  }
   const logLifts = {};
   let anyLogged = false;
 
@@ -2061,7 +2114,7 @@ function gslpSaveSession() {
     saveJSON('wl_gslp_state', gslpState);
     saveJSON('wl_gslp_log', gslpLog);
     gslpDraft = {};
-    gslpDraftDay = null;
+    gslpDrafts[day] = {};
     persistGslpDraft();
   } catch (err) {
     gslpLog.pop();
