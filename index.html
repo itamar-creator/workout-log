@@ -216,7 +216,7 @@
   .gslp-fail-choices { display: flex; gap: 8px; }
   .gslp-fail-choice-btn { flex: 1; padding: 7px; border-radius: 10px; border: 1.5px solid #8A5A3A; background: transparent; color: #8A5A3A; font-size: 12px; cursor: pointer; font-family: 'Sriracha', cursive; }
   .gslp-fail-choice-btn.picked { background: #8A5A3A; color: #F7F4EC; }
-  .gslp-fail-auto { margin-top: 10px; padding: 10px; background: #F0E4D8; border-radius: 10px; font-size: 12.5px; color: #8A5A3A; }
+  .gslp-fail-box.gslp-fail-auto { font-size: 12.5px; color: #8A5A3A; }
   .gslp-free-input { width: 72px; height: 36px; border-radius: 10px; border: 1.5px solid var(--text-secondary); text-align: center; font-size: 14px; }
   .gslp-done-row { display: flex; align-items: center; gap: 10px; }
   .gslp-done-wrap { position: relative; flex-shrink: 0; margin-left: auto; display: inline-flex; }
@@ -572,7 +572,10 @@
     <button class="big-btn secondary" id="btn-backups">Backups</button>
     <div style="text-align:center;margin-top:28px;font-size:12px;color:var(--text-secondary);">
       build <span id="app-build">?</span>
+      &nbsp;·&nbsp;
+      <span id="app-diag-toggle" style="text-decoration:underline;cursor:pointer;">diagnostics</span>
     </div>
+    <pre id="app-diag" style="display:none;font-size:11px;white-space:pre-wrap;word-break:break-all;background:var(--card);padding:10px;border-radius:8px;margin-top:10px;color:var(--text);"></pre>
   </div>
 
   <div id="screen-backups" class="screen">
@@ -660,7 +663,7 @@ function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 // Bump this with every deploy. Shown at the bottom of Settings and logged on
 // load, so "is this actually the new code?" is never a guess — a stale
 // service worker can otherwise keep serving an old build indefinitely.
-const APP_BUILD = 17;
+const APP_BUILD = 21;
 console.log('LogIt build', APP_BUILD);
 
 const BACKUP_URL = 'https://workout-log-backup.itamar-a88.workers.dev';
@@ -875,8 +878,12 @@ async function restoreFromServer() {
     exerciseOrder = data.exerciseOrder || null;
     historyArchive = data.historyArchive || [];
     bodyStats = data.bodyStats || [];
-    gslpState = gslpMergeState(data.gslpState);
-    gslpLog = data.gslpLog || [];
+    // Only adopt GSLP data if the backup actually contains it. A backup taken
+    // before GSLP existed (or by an older build) has no gslpLog, and blindly
+    // assigning [] there would silently destroy the local GSLP history that
+    // the restore was never meant to touch.
+    if (data.gslpState) gslpState = gslpMergeState(data.gslpState);
+    if (Array.isArray(data.gslpLog)) gslpLog = data.gslpLog;
     saveJSON('wl_sessions', sessions);
     saveJSON('wl_flags', flags);
     saveJSON('wl_custom_exercises', customExercises);
@@ -919,8 +926,12 @@ async function restorePreviousFromServer() {
     exerciseOrder = data.exerciseOrder || null;
     historyArchive = data.historyArchive || [];
     bodyStats = data.bodyStats || [];
-    gslpState = gslpMergeState(data.gslpState);
-    gslpLog = data.gslpLog || [];
+    // Only adopt GSLP data if the backup actually contains it. A backup taken
+    // before GSLP existed (or by an older build) has no gslpLog, and blindly
+    // assigning [] there would silently destroy the local GSLP history that
+    // the restore was never meant to touch.
+    if (data.gslpState) gslpState = gslpMergeState(data.gslpState);
+    if (Array.isArray(data.gslpLog)) gslpLog = data.gslpLog;
     saveJSON('wl_sessions', sessions);
     saveJSON('wl_flags', flags);
     saveJSON('wl_custom_exercises', customExercises);
@@ -1987,7 +1998,7 @@ function renderGslpDayScreen(day) {
 
 function gslpShowFailChoice(liftId, onChoice) {
   const box = document.querySelector('.gslp-fail-box[data-id="' + liftId + '"]');
-  box.className = 'gslp-fail-box'; // reset — the dumbbell auto-fail path overwrites this
+  box.classList.remove('gslp-fail-auto'); // reset styling without touching the class it's found by
   box.style.display = 'block';
   box.innerHTML =
     '<div class="gslp-fail-msg">Didn\u2019t reach 7 reps \u2014 what now?</div>' +
@@ -2035,8 +2046,8 @@ function gslpHandleDone(btn) {
       gslpDraft[liftId].failChoice = null;
       persistGslpDraft();
     }
-    const box = card.querySelector('.gslp-fail-box[data-id="' + liftId + '"], .gslp-fail-auto[data-id="' + liftId + '"]');
-    if (box) { box.className = 'gslp-fail-box'; box.style.display = 'none'; }
+    const box = card.querySelector('.gslp-fail-box[data-id="' + liftId + '"]');
+    if (box) { box.classList.remove('gslp-fail-auto'); box.style.display = 'none'; }
     gslpUncelebrate(btn);
     return;
   }
@@ -2057,7 +2068,7 @@ function gslpHandleDone(btn) {
     // Refusing silently here (a faint border tint) reads as "the button is
     // broken" — say what's missing and focus the field that needs filling.
     amrapInput.style.borderColor = '#D97A2E';
-    failBox.className = 'gslp-fail-auto';
+    failBox.classList.add('gslp-fail-auto');
     failBox.style.display = 'block';
     failBox.textContent = 'Enter how many reps you did on the last set first.';
     amrapInput.focus();
@@ -2089,10 +2100,10 @@ function gslpHandleDone(btn) {
     if (weightOverride) clone.dumbbell = weightOverride;
     progressDumbbellLift(clone, amrap);
     failBox.style.display = 'block';
-    failBox.className = 'gslp-fail-auto';
+    failBox.classList.add('gslp-fail-auto');
     failBox.textContent = 'Didn\u2019t reach 7 reps \u2014 next session drops to ' + clone.dumbbell + 'kg/hand.';
   } else {
-    failBox.className = 'gslp-fail-box';
+    failBox.classList.remove('gslp-fail-auto');
     failBox.style.display = 'none';
   }
 
@@ -2134,9 +2145,16 @@ function gslpSaveSession() {
     // advance or deload anything.
     if (!hasAmrap) {
       if (override === null) return;
-      if (lift.kind === 'dumbbell') gslpState[lift.id].dumbbell = override;
-      else if (lift.kind === 'chinup') gslpState.chinup.load = override;
-      else gslpState[lift.id].weight = override;
+      if (lift.kind === 'dumbbell') {
+        gslpState[lift.id].dumbbell = override;
+        logLifts[lift.id] = { weight: override, amrap: null, event: 'weight-only' };
+      } else if (lift.kind === 'chinup') {
+        gslpState.chinup.load = override;
+        logLifts[lift.id] = { load: override, amrap: null, event: 'weight-only' };
+      } else {
+        gslpState[lift.id].weight = override;
+        logLifts[lift.id] = { weight: override, amrap: null, event: 'weight-only' };
+      }
       anyLogged = true;
       return;
     }
@@ -2188,6 +2206,24 @@ function gslpSaveSession() {
     console.warn('GSLP save failed:', err);
     document.getElementById('gslp-save-btn').disabled = false;
     return;
+  }
+
+  // Read straight back and confirm it actually stuck. localStorage can accept
+  // a write and silently fail to persist it (private mode, evicted storage,
+  // quota), and a second tab or window can overwrite it moments later. Without
+  // this check that all looks identical to "the save button did nothing".
+  try {
+    const readback = JSON.parse(localStorage.getItem('wl_gslp_state') || 'null');
+    const logBack = JSON.parse(localStorage.getItem('wl_gslp_log') || '[]');
+    const mismatch = !readback || JSON.stringify(readback) !== JSON.stringify(gslpState);
+    if (mismatch || logBack.length !== gslpLog.length) {
+      alert('Saved, but the data did not persist.\n\nWrote ' + gslpLog.length +
+            ' session(s); storage reports ' + logBack.length +
+            '.\n\nThis usually means the app is open in another tab or window, or the browser is clearing storage. Close any other copies of LogIt and try again.');
+      console.warn('GSLP save read-back mismatch', { wrote: gslpState, readback });
+    }
+  } catch (err) {
+    console.warn('GSLP save read-back failed:', err);
   }
 
   backupToServer();
@@ -2661,7 +2697,43 @@ document.getElementById('btn-backups').addEventListener('click', () => {
 });
 document.getElementById('btn-settings').addEventListener('click', () => {
   document.getElementById('app-build').textContent = APP_BUILD;
+  document.getElementById('app-diag').style.display = 'none';
   showScreen('screen-settings');
+});
+
+document.getElementById('app-diag-toggle').addEventListener('click', () => {
+  const el = document.getElementById('app-diag');
+  if (el.style.display === 'block') { el.style.display = 'none'; return; }
+  // Reads straight from storage, not from memory, so it shows what actually
+  // persisted rather than what the app currently believes.
+  let out = '';
+  try {
+    const st = JSON.parse(localStorage.getItem('wl_gslp_state') || 'null');
+    const lg = JSON.parse(localStorage.getItem('wl_gslp_log') || '[]');
+    out += 'build ' + APP_BUILD + '\n';
+    out += 'gslp sessions stored: ' + lg.length + '\n';
+    if (lg.length) out += 'last: ' + new Date(lg[lg.length - 1].date).toLocaleString() + ' (day ' + lg[lg.length - 1].day + ')\n';
+    out += 'next day: ' + (st ? st.nextDay : '—') + '\n\n';
+    if (st) {
+      ['squat', 'deadlift', 'bench', 'row', 'ohp', 'chinup'].forEach(k => {
+        const s = st[k] || {};
+        const v = s.weight !== undefined ? s.weight : (s.dumbbell !== undefined ? s.dumbbell : s.load);
+        out += k + ': ' + v + (s.lastAmrap != null ? '  (lastAmrap ' + s.lastAmrap + ')' : '') + '\n';
+      });
+    }
+    out += '\nfree sessions stored: ' + (JSON.parse(localStorage.getItem('wl_sessions') || '[]')).length;
+    out += '\npersistent storage: ' + (storageIsPersistent === null ? 'unknown' : storageIsPersistent);
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(est => {
+        const mb = n => (n / 1048576).toFixed(1) + ' MB';
+        el.textContent += '\nstorage used: ' + mb(est.usage || 0) + ' of ' + mb(est.quota || 0);
+      }).catch(() => {});
+    }
+  } catch (err) {
+    out = 'Could not read storage: ' + err.message;
+  }
+  el.textContent = out;
+  el.style.display = 'block';
 });
 document.getElementById('btn-back-title-settings').addEventListener('click', () => history.back());
 document.getElementById('btn-back-settings-1').addEventListener('click', () => history.back());
@@ -2768,6 +2840,26 @@ window.addEventListener('popstate', (event) => {
     if (prevScreen === 'screen-manage-exercises') renderManageExercisesScreen();
   }
 });
+
+// Ask the browser to treat this app's data as persistent. Without this,
+// Chrome classes localStorage as "best effort" and may evict it under storage
+// pressure — silently, with no warning and no error at write time. That looks
+// exactly like "I saved and it forgot everything". Installed PWAs are usually
+// granted this automatically once requested.
+let storageIsPersistent = null;
+async function requestPersistentStorage() {
+  if (!navigator.storage || !navigator.storage.persist) return;
+  try {
+    storageIsPersistent = await navigator.storage.persisted();
+    if (!storageIsPersistent) {
+      storageIsPersistent = await navigator.storage.persist();
+    }
+    console.log('Persistent storage:', storageIsPersistent);
+  } catch (err) {
+    console.warn('Could not request persistent storage:', err);
+  }
+}
+requestPersistentStorage();
 
 autoSyncOnLoad();
 
