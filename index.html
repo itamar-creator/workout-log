@@ -570,6 +570,9 @@
     <div class="header"><span class="session-label">Settings</span></div>
     <button class="big-btn secondary" id="btn-manage-exercises">Manage exercises</button>
     <button class="big-btn secondary" id="btn-backups">Backups</button>
+    <div style="text-align:center;margin-top:28px;font-size:12px;color:var(--text-secondary);">
+      build <span id="app-build">?</span>
+    </div>
   </div>
 
   <div id="screen-backups" class="screen">
@@ -654,6 +657,12 @@ function loadJSON(key, fallback) {
 function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 
 // --- Cloudflare Worker backup config ---
+// Bump this with every deploy. Shown at the bottom of Settings and logged on
+// load, so "is this actually the new code?" is never a guess — a stale
+// service worker can otherwise keep serving an old build indefinitely.
+const APP_BUILD = 17;
+console.log('LogIt build', APP_BUILD);
+
 const BACKUP_URL = 'https://workout-log-backup.itamar-a88.workers.dev';
 const AUTH_TOKEN = 'xk29fJ3mQpL8vN4wRt7yZc1';
 
@@ -679,10 +688,36 @@ let bodyStats = loadJSON('wl_body_stats', []); // [{ date, weight, height, waist
 // target) as the equivalent of standard GSLP's rule of 10.
 //
 // Day A: Bench Press (dumbbell), Dumbbell Row (dumbbell), Squat (barbell), Bicep Curls (accessory)
-// Day B: Overhead Press (dumbbell), Chin-ups (bodyweight\u2192weighted), Deadlift (barbell, single AMRAP set only), Dips (accessory)
+// Day B: Overhead Press (dumbbell), Chin-ups (assist\u2192bodyweight\u2192added weight), Deadlift (barbell, single AMRAP set only), Dips (accessory)
 const GSLP_BASE_REPS = 7;
 const GSLP_BARBELL_INCREMENT = 5;    // kg, squat/deadlift/weighted-chinup progression
-const GSLP_CHINUP_INCREMENT = 2.5;   // kg, once chin-ups go weighted
+const GSLP_CHINUP_INCREMENT = 2.5;   // kg, steps once past bodyweight
+
+// Chin-ups run on ONE continuous scale rather than a separate "assisted" and
+// "weighted" mode, because progression is the same operation throughout:
+// move one step up. Negative = machine assistance (less assist is harder),
+// 0 = pure bodyweight, positive = added weight.
+// Itamar's assist machine: minimum 40kg, 10kg steps. There is no way to
+// assist with less than 40kg, so the step after -40 is bodyweight.
+const GSLP_CHINUP_STEPS = [-90, -80, -70, -60, -50, -40, 0, 2.5, 5, 7.5, 10, 12.5, 15, 17.5, 20, 25, 30];
+
+function gslpChinupStepUp(load) {
+  const i = GSLP_CHINUP_STEPS.indexOf(load);
+  if (i === -1) return load + GSLP_CHINUP_INCREMENT;
+  if (i === GSLP_CHINUP_STEPS.length - 1) return load + GSLP_CHINUP_INCREMENT;
+  return GSLP_CHINUP_STEPS[i + 1];
+}
+function gslpChinupStepDown(load) {
+  const i = GSLP_CHINUP_STEPS.indexOf(load);
+  if (i <= 0) return GSLP_CHINUP_STEPS[0];
+  return GSLP_CHINUP_STEPS[i - 1];
+}
+// "40kg assist" / "bodyweight" / "+5kg" — a bare number would be ambiguous.
+function gslpChinupLabel(load) {
+  if (load < 0) return Math.abs(load) + 'kg assist';
+  if (load === 0) return 'bodyweight';
+  return '+' + load + 'kg';
+}
 const GSLP_DUMBBELL_LEVELUP_THRESHOLD = 12; // AMRAP reps needed to move up a dumbbell size
 const GSLP_BARBELL_START = 20;       // kg, empty bar \u2014 floor for barbell deloads
 
@@ -717,7 +752,7 @@ function gslpDefaultState() {
     bench: { dumbbell: GSLP_DUMBBELL_STEPS[0], lastChange: null, lastChangeFrom: null },
     row: { dumbbell: GSLP_DUMBBELL_STEPS[0], lastChange: null, lastChangeFrom: null },
     ohp: { dumbbell: GSLP_DUMBBELL_STEPS[0], lastChange: null, lastChangeFrom: null },
-    chinup: { weighted: false, addedWeight: 0, lastAmrap: null, lastChange: null, lastChangeFrom: null }
+    chinup: { load: -40, lastAmrap: null, lastChange: null, lastChangeFrom: null }
   };
 }
 function gslpMergeState(stored) {
@@ -728,6 +763,16 @@ function gslpMergeState(stored) {
     if (key === 'nextDay') return;
     merged[key] = Object.assign({}, defaults[key], stored[key] || {});
   });
+  // Migrate the old chin-up shape (weighted flag + addedWeight, which had no
+  // way to express machine assistance) onto the single load scale. Check the
+  // STORED object, not the merged one — the merge has already filled in a
+  // default load, so testing the merged copy would never detect old data.
+  const c = merged.chinup;
+  if (stored.chinup && typeof stored.chinup.load !== 'number') {
+    c.load = stored.chinup.weighted ? (stored.chinup.addedWeight || 0) : 0;
+  }
+  delete c.weighted;
+  delete c.addedWeight;
   return merged;
 }
 
@@ -1349,7 +1394,7 @@ function bodyStatBadge(current, previous, unit, lowerIsBetter) {
 }
 
 // --- GSLP progression rules ---
-// Barbell lifts (squat, deadlift, and chin-ups once weighted): "rule of 14"
+// Barbell lifts (squat, deadlift): "rule of 14"
 // — this session's AMRAP + last session's AMRAP at the SAME weight >= 14
 // triggers a weight increase. Missing the base rep target (7) doesn't
 // auto-deload — Itamar chooses between deloading 10% or retrying the same
@@ -1403,26 +1448,16 @@ function progressDumbbellLift(state, amrapReps) {
   return 'hold';
 }
 
-// Chin-ups: bodyweight reps until the AMRAP threshold is cleared, then
-// switches to weighted and follows the same rule-of-14 + choice logic as
-// the barbell lifts from that point on.
+// Chin-ups now follow exactly the same rules as the barbell lifts — rule of
+// 14 to progress, deload-or-retry choice on a miss — just stepping along the
+// assist/bodyweight/added-weight scale instead of adding plates. Moving "up"
+// means less assistance early on and more added weight later; it is one
+// continuous progression with no special case at the crossover.
 function progressChinup(state, amrapReps, failChoice) {
-  if (!state.weighted) {
-    if (amrapReps >= GSLP_DUMBBELL_LEVELUP_THRESHOLD) {
-      state.weighted = true;
-      state.addedWeight = GSLP_CHINUP_INCREMENT;
-      state.lastAmrap = null;
-      state.lastChange = 'started-weighted';
-      state.lastChangeFrom = 0;
-      return 'started-weighted';
-    }
-    return 'hold';
-  }
   if (amrapReps < GSLP_BASE_REPS) {
-    const from = state.addedWeight;
+    const from = state.load;
     if (failChoice === 'deload') {
-      state.addedWeight = Math.max(0, round1(state.addedWeight - GSLP_CHINUP_INCREMENT));
-      if (state.addedWeight === 0) state.weighted = false;
+      state.load = gslpChinupStepDown(state.load);
       state.lastAmrap = null;
       state.lastChange = 'deload';
       state.lastChangeFrom = from;
@@ -1435,8 +1470,8 @@ function progressChinup(state, amrapReps, failChoice) {
   }
   const total = amrapReps + (state.lastAmrap || 0);
   if (total >= GSLP_BASE_REPS * 2) {
-    const from = state.addedWeight;
-    state.addedWeight += GSLP_CHINUP_INCREMENT;
+    const from = state.load;
+    state.load = gslpChinupStepUp(state.load);
     state.lastAmrap = null;
     state.lastChange = 'levelup';
     state.lastChangeFrom = from;
@@ -1593,7 +1628,7 @@ const GSLP_HISTORY_METRICS = [
   { id: 'bench', label: 'Bench press', unit: 'kg/hand' },
   { id: 'row', label: 'Dumbbell row', unit: 'kg/hand' },
   { id: 'ohp', label: 'Overhead press', unit: 'kg/hand' },
-  { id: 'chinup', label: 'Chin-ups (weighted)', unit: 'kg' },
+  { id: 'chinup', label: 'Chin-ups (load)', unit: 'kg' },
   { id: 'curls', label: 'Bicep curls', unit: '' },
   { id: 'dips', label: 'Dips', unit: '' }
 ];
@@ -1620,7 +1655,8 @@ function renderGslpHistoryScreen() {
       if (!l) return;
       let value = null;
       if (metric.id === 'chinup') {
-        if (l.weighted) value = l.addedWeight;
+        value = (typeof l.load === 'number') ? l.load
+              : (l.weighted ? l.addedWeight : null); // older logs used weighted/addedWeight
       } else if (metric.id === 'curls' || metric.id === 'dips') {
         const n = parseFloat(l.weight);
         if (!isNaN(n)) value = n;
@@ -1795,14 +1831,13 @@ function gslpEscapeAttr(v) {
     .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function gslpChangeBadge(state) {
+function gslpChangeBadge(state, isChinup) {
   if (!state.lastChange) return '';
-  if (state.lastChange === 'started-weighted') {
-    return '<div class="gslp-change-badge up">&#8593; started weighted chin-ups</div>';
-  }
   const isUp = state.lastChange === 'levelup';
   const arrow = isUp ? '&#8593;' : '&#8595;';
-  const label = isUp ? 'up from ' + state.lastChangeFrom : 'deloaded from ' + state.lastChangeFrom;
+  // A bare "-40" would be meaningless for chin-ups; show "40kg assist".
+  const from = isChinup ? gslpChinupLabel(state.lastChangeFrom) : state.lastChangeFrom;
+  const label = isUp ? 'up from ' + from : 'deloaded from ' + from;
   return '<div class="gslp-change-badge ' + (isUp ? 'up' : 'down') + '">' + arrow + ' ' + label + ' last time</div>';
 }
 
@@ -1839,13 +1874,12 @@ function renderGslpCard(lift) {
   if (lift.kind === 'chinup') {
     const state = gslpState.chinup;
     card.className = 'gslp-card dumbbell';
-    const addedWeightVal = draft && draft.weightOverride != null ? draft.weightOverride : state.addedWeight;
-    const weightRow = state.weighted
-      ? '<div class="gslp-weight-pill"><input class="gslp-weight-input" id="gslp-w-chinup" type="number" value="' + addedWeightVal + '"><span class="gslp-weight-unit">kg added</span></div>'
-      : '<span style="font-size:13px;color:var(--text-secondary);">bodyweight (12+ reps unlocks weighted)</span>';
+    const load = (draft && draft.weightOverride != null) ? draft.weightOverride : state.load;
     card.innerHTML =
-      '<div class="gslp-header-row"><div class="gslp-name">' + lift.name + '</div>' + weightRow + '</div>' +
-      gslpChangeBadge(state) +
+      '<div class="gslp-header-row"><div class="gslp-name">' + lift.name + '</div>' +
+        '<div class="gslp-weight-pill"><input class="gslp-weight-input" id="gslp-w-chinup" type="number" step="any" value="' + load + '"><span class="gslp-weight-unit" id="gslp-chinup-label">' + gslpChinupLabel(load) + '</span></div>' +
+      '</div>' +
+      gslpChangeBadge(state, true) +
       '<div class="gslp-work-row" style="margin-top:12px;">' +
         '<span class="gslp-set-label">2&times;7 + AMRAP</span>' +
         '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + (draft && draft.amrap != null ? draft.amrap : '') + '">' +
@@ -1853,6 +1887,13 @@ function renderGslpCard(lift) {
       '</div>' +
       '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
     gslpWireDraftInputs(card, lift.id, 'gslp-w-chinup');
+    // Keep the assist/bodyweight/added label in step with what's typed.
+    const loadInput = card.querySelector('#gslp-w-chinup');
+    loadInput.addEventListener('input', () => {
+      const v = parseFloat(loadInput.value);
+      const labelEl = card.querySelector('#gslp-chinup-label');
+      if (labelEl) labelEl.textContent = isNaN(v) ? '' : gslpChinupLabel(v);
+    });
     return card;
   }
 
@@ -1893,11 +1934,14 @@ function gslpWireDraftInputs(card, liftId, weightInputId, isDumbbell) {
   const weightInput = card.querySelector('#' + weightInputId);
   if (weightInput) {
     weightInput.addEventListener('input', () => {
-      const w = parseFloat(weightInput.value) || 0;
+      const raw = weightInput.value.trim();
+      const parsed = parseFloat(raw);
       const warmupEl = document.getElementById('gslp-warmup-' + liftId);
-      if (warmupEl) warmupEl.innerHTML = gslpWarmupHTML(w, !!isDumbbell);
+      if (warmupEl) warmupEl.innerHTML = gslpWarmupHTML(isNaN(parsed) ? 0 : parsed, !!isDumbbell);
       gslpDraft[liftId] = gslpDraft[liftId] || {};
-      gslpDraft[liftId].weightOverride = w || null;
+      // 0 is a real load for chin-ups (pure bodyweight) and negatives are real
+      // (machine assistance), so only an empty field means "no override".
+      gslpDraft[liftId].weightOverride = (raw === '' || isNaN(parsed)) ? null : parsed;
       persistGslpDraft();
     });
   }
@@ -2010,18 +2054,25 @@ function gslpHandleDone(btn) {
   const amrap = parseInt(amrapInput.value, 10);
   const failBox = card.querySelector('.gslp-fail-box[data-id="' + liftId + '"]');
   if (isNaN(amrap)) {
+    // Refusing silently here (a faint border tint) reads as "the button is
+    // broken" — say what's missing and focus the field that needs filling.
     amrapInput.style.borderColor = '#D97A2E';
+    failBox.className = 'gslp-fail-auto';
+    failBox.style.display = 'block';
+    failBox.textContent = 'Enter how many reps you did on the last set first.';
+    amrapInput.focus();
     return;
   }
   amrapInput.style.borderColor = '';
 
   const weightOverride = lift.kind === 'chinup'
-    ? (gslpState.chinup.weighted ? parseFloat(document.getElementById('gslp-w-chinup').value) : null)
+    ? parseFloat(document.getElementById('gslp-w-chinup').value)
     : parseFloat(document.getElementById('gslp-w-' + liftId).value);
 
   const isDumbbellOnly = lift.kind === 'dumbbell';
-  const needsChoice = amrap < GSLP_BASE_REPS && !isDumbbellOnly &&
-    !(lift.kind === 'chinup' && !gslpState.chinup.weighted);
+  // Chin-ups get the same deload/retry choice as the barbell lifts now that
+  // they step along a single load scale.
+  const needsChoice = amrap < GSLP_BASE_REPS && !isDumbbellOnly;
 
   if (needsChoice) {
     gslpShowFailChoice(liftId, (choice) => {
@@ -2061,39 +2112,51 @@ function gslpSaveSession() {
 
   GSLP_DAYS[day].forEach(lift => {
     const draft = gslpDraft[lift.id];
-    // Only lifts explicitly marked Done count. A draft can also exist from
-    // merely typing in a field, and those must NOT be processed — an
-    // untouched amrap is null, and `null < 7` is true in JS, which would
-    // otherwise record a failed set the user never actually performed.
-    if (!draft || !draft.done) return;
+    if (!draft) return; // never touched this exercise
 
     if (lift.kind === 'accessory') {
+      if (!draft.weight && !draft.reps) return;
       logLifts[lift.id] = { weight: draft.weight, reps: draft.reps };
       anyLogged = true;
       return;
     }
 
-    if (typeof draft.amrap !== 'number' || isNaN(draft.amrap)) return;
-    anyLogged = true;
-
-    // A weight override of 0/NaN is unusable — fall back to the stored weight.
-    const override = (typeof draft.weightOverride === 'number' && draft.weightOverride > 0)
+    // An override of 0 or negative is legitimate for chin-ups (bodyweight /
+    // machine assistance), so only null/NaN counts as "not entered".
+    const override = (typeof draft.weightOverride === 'number' && !isNaN(draft.weightOverride))
       ? draft.weightOverride : null;
+    const hasAmrap = typeof draft.amrap === 'number' && !isNaN(draft.amrap);
+
+    // Pressing Done is NOT required to save. What decides whether progression
+    // runs is simply whether an AMRAP number was entered — that's the only
+    // input the rules actually need. A weight typed without an AMRAP still
+    // gets stored as the new working weight so it isn't lost, it just doesn't
+    // advance or deload anything.
+    if (!hasAmrap) {
+      if (override === null) return;
+      if (lift.kind === 'dumbbell') gslpState[lift.id].dumbbell = override;
+      else if (lift.kind === 'chinup') gslpState.chinup.load = override;
+      else gslpState[lift.id].weight = override;
+      anyLogged = true;
+      return;
+    }
+
+    anyLogged = true;
 
     let state, event;
     if (lift.kind === 'dumbbell') {
       state = gslpState[lift.id];
-      if (override) state.dumbbell = override;
+      if (override !== null) state.dumbbell = override;
       event = progressDumbbellLift(state, draft.amrap);
       logLifts[lift.id] = { weight: state.dumbbell, amrap: draft.amrap, event };
     } else if (lift.kind === 'chinup') {
       state = gslpState.chinup;
-      if (state.weighted && override) state.addedWeight = override;
+      if (override !== null) state.load = override;
       event = progressChinup(state, draft.amrap, draft.failChoice);
-      logLifts[lift.id] = { weighted: state.weighted, addedWeight: state.addedWeight, amrap: draft.amrap, event };
+      logLifts[lift.id] = { load: state.load, amrap: draft.amrap, event };
     } else {
       state = gslpState[lift.id];
-      if (override) state.weight = override;
+      if (override !== null) state.weight = override;
       event = progressBarbellLift(state, draft.amrap, GSLP_BARBELL_INCREMENT, draft.failChoice);
       logLifts[lift.id] = { weight: state.weight, amrap: draft.amrap, event };
     }
@@ -2596,7 +2659,10 @@ document.getElementById('btn-manage-exercises').addEventListener('click', () => 
 document.getElementById('btn-backups').addEventListener('click', () => {
   showScreen('screen-backups');
 });
-document.getElementById('btn-settings').addEventListener('click', () => showScreen('screen-settings'));
+document.getElementById('btn-settings').addEventListener('click', () => {
+  document.getElementById('app-build').textContent = APP_BUILD;
+  showScreen('screen-settings');
+});
 document.getElementById('btn-back-title-settings').addEventListener('click', () => history.back());
 document.getElementById('btn-back-settings-1').addEventListener('click', () => history.back());
 document.getElementById('btn-back-settings-2').addEventListener('click', () => history.back());
