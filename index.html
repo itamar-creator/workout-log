@@ -663,7 +663,7 @@ function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 // Bump this with every deploy. Shown at the bottom of Settings and logged on
 // load, so "is this actually the new code?" is never a guess — a stale
 // service worker can otherwise keep serving an old build indefinitely.
-const APP_BUILD = 21;
+const APP_BUILD = 22;
 console.log('LogIt build', APP_BUILD);
 
 const BACKUP_URL = 'https://workout-log-backup.itamar-a88.workers.dev';
@@ -1842,6 +1842,26 @@ function gslpEscapeAttr(v) {
     .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Most recent logged entry for a lift, so the card can show what you did
+// last time. Reads the log rather than gslpState.lastAmrap, because that
+// field is deliberately cleared whenever the weight changes (it only exists
+// to drive the rule of 14) and so isn't a record of your last session.
+function gslpLastLogged(liftId) {
+  for (let i = gslpLog.length - 1; i >= 0; i--) {
+    const entry = gslpLog[i] && gslpLog[i].lifts && gslpLog[i].lifts[liftId];
+    if (entry) return entry;
+  }
+  return null;
+}
+
+// An in-progress entry always wins; otherwise show what was logged last
+// time, so the card opens with something to beat rather than a blank box.
+function gslpFieldValue(draftValue, lastValue) {
+  if (draftValue !== undefined && draftValue !== null && draftValue !== '') return draftValue;
+  if (lastValue !== undefined && lastValue !== null && lastValue !== '') return lastValue;
+  return '';
+}
+
 function gslpChangeBadge(state, isChinup) {
   if (!state.lastChange) return '';
   const isUp = state.lastChange === 'levelup';
@@ -1862,14 +1882,15 @@ function renderGslpCard(lift) {
   const card = document.createElement('div');
   card.dataset.id = lift.id;
   const draft = gslpDraft[lift.id];
+  const lastLogged = gslpLastLogged(lift.id);
 
   if (lift.kind === 'accessory') {
     card.className = 'gslp-card accessory';
     card.innerHTML =
       '<div class="gslp-name" style="margin-bottom:10px;">' + lift.name + '</div>' +
       '<div class="gslp-done-row">' +
-        '<input class="gslp-free-input" data-field="weight" placeholder="weight" value="' + gslpEscapeAttr(draft && draft.weight) + '">' +
-        '<input class="gslp-free-input" data-field="reps" placeholder="reps" value="' + gslpEscapeAttr(draft && draft.reps) + '">' +
+        '<input class="gslp-free-input" data-field="weight" placeholder="weight" value="' + gslpEscapeAttr(gslpFieldValue(draft && draft.weight, lastLogged && lastLogged.weight)) + '">' +
+        '<input class="gslp-free-input" data-field="reps" placeholder="reps" value="' + gslpEscapeAttr(gslpFieldValue(draft && draft.reps, lastLogged && lastLogged.reps)) + '">' +
         '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
       '</div>';
     card.querySelectorAll('.gslp-free-input').forEach(input => {
@@ -1893,7 +1914,7 @@ function renderGslpCard(lift) {
       gslpChangeBadge(state, true) +
       '<div class="gslp-work-row" style="margin-top:12px;">' +
         '<span class="gslp-set-label">2&times;7 + AMRAP</span>' +
-        '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + (draft && draft.amrap != null ? draft.amrap : '') + '">' +
+        '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + gslpFieldValue(draft && draft.amrap, lastLogged && lastLogged.amrap) + '">' +
         '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
       '</div>' +
       '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
@@ -1926,7 +1947,7 @@ function renderGslpCard(lift) {
     '<div class="gslp-warmup-row" id="gslp-warmup-' + lift.id + '">' + gslpWarmupHTML(weight, isDumbbell) + '</div>' +
     '<div class="gslp-work-row">' +
       '<span class="gslp-set-label">' + workLabel + '</span>' +
-      '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + (draft && draft.amrap != null ? draft.amrap : '') + '">' +
+      '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + gslpFieldValue(draft && draft.amrap, lastLogged && lastLogged.amrap) + '">' +
       '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
     '</div>' +
     '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
