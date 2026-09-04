@@ -663,7 +663,7 @@ function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 // Bump this with every deploy. Shown at the bottom of Settings and logged on
 // load, so "is this actually the new code?" is never a guess — a stale
 // service worker can otherwise keep serving an old build indefinitely.
-const APP_BUILD = 22;
+const APP_BUILD = 23;
 console.log('LogIt build', APP_BUILD);
 
 const BACKUP_URL = 'https://workout-log-backup.itamar-a88.workers.dev';
@@ -1914,7 +1914,7 @@ function renderGslpCard(lift) {
       gslpChangeBadge(state, true) +
       '<div class="gslp-work-row" style="margin-top:12px;">' +
         '<span class="gslp-set-label">2&times;7 + AMRAP</span>' +
-        '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + gslpFieldValue(draft && draft.amrap, lastLogged && lastLogged.amrap) + '">' +
+        '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="text" inputmode="numeric" placeholder="0" value="' + gslpFieldValue(draft && draft.amrap, lastLogged && lastLogged.amrap) + '">' +
         '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
       '</div>' +
       '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
@@ -1947,7 +1947,7 @@ function renderGslpCard(lift) {
     '<div class="gslp-warmup-row" id="gslp-warmup-' + lift.id + '">' + gslpWarmupHTML(weight, isDumbbell) + '</div>' +
     '<div class="gslp-work-row">' +
       '<span class="gslp-set-label">' + workLabel + '</span>' +
-      '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="number" placeholder="0" value="' + gslpFieldValue(draft && draft.amrap, lastLogged && lastLogged.amrap) + '">' +
+      '<input class="gslp-amrap-input" data-id="' + lift.id + '" type="text" inputmode="numeric" placeholder="0" value="' + gslpFieldValue(draft && draft.amrap, lastLogged && lastLogged.amrap) + '">' +
       '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
     '</div>' +
     '<div class="gslp-fail-box" data-id="' + lift.id + '" style="display:none;"></div>';
@@ -1982,7 +1982,9 @@ function gslpWireDraftInputs(card, liftId, weightInputId, isDumbbell) {
   if (amrapInput) {
     amrapInput.addEventListener('input', () => {
       gslpDraft[liftId] = gslpDraft[liftId] || {};
-      gslpDraft[liftId].amrap = amrapInput.value === '' ? null : parseInt(amrapInput.value, 10);
+      // Store the raw notation ("12", "10-15", "12-12-8") — parseReps turns
+      // it into a comparable average wherever the rules need a number.
+      gslpDraft[liftId].amrap = amrapInput.value.trim() === '' ? null : amrapInput.value.trim();
       persistGslpDraft();
     });
   }
@@ -2083,9 +2085,11 @@ function gslpHandleDone(btn) {
   }
 
   const amrapInput = card.querySelector('.gslp-amrap-input[data-id="' + liftId + '"]');
-  const amrap = parseInt(amrapInput.value, 10);
+  const amrapRaw = amrapInput.value.trim();
+  const parsedReps = parseReps(amrapRaw);
+  const amrap = parsedReps ? parsedReps.avg : NaN;
   const failBox = card.querySelector('.gslp-fail-box[data-id="' + liftId + '"]');
-  if (isNaN(amrap)) {
+  if (!parsedReps) {
     // Refusing silently here (a faint border tint) reads as "the button is
     // broken" — say what's missing and focus the field that needs filling.
     amrapInput.style.borderColor = '#D97A2E';
@@ -2108,7 +2112,7 @@ function gslpHandleDone(btn) {
 
   if (needsChoice) {
     gslpShowFailChoice(liftId, (choice) => {
-      gslpDraft[liftId] = { amrap, weightOverride, failChoice: choice, done: true };
+  gslpDraft[liftId] = { amrap: amrapRaw, weightOverride, failChoice: choice, done: true };
       persistGslpDraft();
       failBox.style.display = 'none';
       gslpCelebrate(btn);
@@ -2128,7 +2132,7 @@ function gslpHandleDone(btn) {
     failBox.style.display = 'none';
   }
 
-  gslpDraft[liftId] = { amrap, weightOverride, failChoice: null, done: true };
+  gslpDraft[liftId] = { amrap: amrapRaw, weightOverride, failChoice: null, done: true };
   persistGslpDraft();
   gslpCelebrate(btn);
 }
@@ -2157,7 +2161,9 @@ function gslpSaveSession() {
     // machine assistance), so only null/NaN counts as "not entered".
     const override = (typeof draft.weightOverride === 'number' && !isNaN(draft.weightOverride))
       ? draft.weightOverride : null;
-    const hasAmrap = typeof draft.amrap === 'number' && !isNaN(draft.amrap);
+    const parsedReps = parseReps(draft.amrap);
+    const hasAmrap = parsedReps !== null;
+    const amrapAvg = parsedReps ? parsedReps.avg : null;
 
     // Pressing Done is NOT required to save. What decides whether progression
     // runs is simply whether an AMRAP number was entered — that's the only
@@ -2186,18 +2192,18 @@ function gslpSaveSession() {
     if (lift.kind === 'dumbbell') {
       state = gslpState[lift.id];
       if (override !== null) state.dumbbell = override;
-      event = progressDumbbellLift(state, draft.amrap);
-      logLifts[lift.id] = { weight: state.dumbbell, amrap: draft.amrap, event };
+      event = progressDumbbellLift(state, amrapAvg);
+      logLifts[lift.id] = { weight: state.dumbbell, amrap: draft.amrap, amrapAvg, event };
     } else if (lift.kind === 'chinup') {
       state = gslpState.chinup;
       if (override !== null) state.load = override;
-      event = progressChinup(state, draft.amrap, draft.failChoice);
-      logLifts[lift.id] = { load: state.load, amrap: draft.amrap, event };
+      event = progressChinup(state, amrapAvg, draft.failChoice);
+      logLifts[lift.id] = { load: state.load, amrap: draft.amrap, amrapAvg, event };
     } else {
       state = gslpState[lift.id];
       if (override !== null) state.weight = override;
-      event = progressBarbellLift(state, draft.amrap, GSLP_BARBELL_INCREMENT, draft.failChoice);
-      logLifts[lift.id] = { weight: state.weight, amrap: draft.amrap, event };
+      event = progressBarbellLift(state, amrapAvg, GSLP_BARBELL_INCREMENT, draft.failChoice);
+      logLifts[lift.id] = { weight: state.weight, amrap: draft.amrap, amrapAvg, event };
     }
   });
 
