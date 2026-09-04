@@ -1,4 +1,4 @@
-const CACHE = 'workout-log-v23';
+const CACHE = 'workout-log-v24';
 
 // Core files the app genuinely can't run without.
 const CORE_ASSETS = [

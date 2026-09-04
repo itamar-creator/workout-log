@@ -663,7 +663,7 @@ function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 // Bump this with every deploy. Shown at the bottom of Settings and logged on
 // load, so "is this actually the new code?" is never a guess — a stale
 // service worker can otherwise keep serving an old build indefinitely.
-const APP_BUILD = 23;
+const APP_BUILD = 24;
 console.log('LogIt build', APP_BUILD);
 
 const BACKUP_URL = 'https://workout-log-backup.itamar-a88.workers.dev';
@@ -981,6 +981,27 @@ async function autoSyncOnLoad() {
       saveJSON('wl_custom_exercises', customExercises);
       saveJSON('wl_exercise_meta', exerciseMeta);
       saveJSON('wl_exercise_order', exerciseOrder);
+    }
+
+    // GSLP: adopt only if the server's log is strictly longer than what's
+    // local. This is the same asymmetric rule as everything above, for the
+    // same reason — a device only pulls when the server is genuinely ahead,
+    // never on a tie or when the server is behind. That protects the
+    // device that just saved from having its own newer data overwritten by
+    // a stale or failed server response, while still letting a device that
+    // was just passively viewing catch up automatically.
+    const serverGslpLog = data.gslpLog || [];
+    if (serverGslpLog.length > gslpLog.length) {
+      gslpLog = serverGslpLog;
+      gslpState = gslpMergeState(data.gslpState);
+      saveJSON('wl_gslp_log', gslpLog);
+      saveJSON('wl_gslp_state', gslpState);
+    }
+
+    const serverBodyStats = data.bodyStats || [];
+    if (serverBodyStats.length > bodyStats.length) {
+      bodyStats = serverBodyStats;
+      saveJSON('wl_body_stats', bodyStats);
     }
   } catch (err) {
     console.warn('Auto-sync failed (offline?):', err);
