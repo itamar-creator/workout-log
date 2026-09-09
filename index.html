@@ -218,6 +218,7 @@
   .gslp-fail-choice-btn.picked { background: #8A5A3A; color: #F7F4EC; }
   .gslp-fail-box.gslp-fail-auto { font-size: 12.5px; color: #8A5A3A; }
   .gslp-free-input { width: 72px; height: 36px; border-radius: 10px; border: 1.5px solid var(--text-secondary); text-align: center; font-size: 14px; }
+  .gslp-simple-weight-input { width: 64px; height: 36px; border-radius: 10px; border: 1.5px solid var(--text-secondary); text-align: center; font-size: 14px; }
   .gslp-done-row { display: flex; align-items: center; gap: 10px; }
   .gslp-done-wrap { position: relative; flex-shrink: 0; margin-left: auto; display: inline-flex; }
   .gslp-next-label {
@@ -663,7 +664,7 @@ function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 // Bump this with every deploy. Shown at the bottom of Settings and logged on
 // load, so "is this actually the new code?" is never a guess — a stale
 // service worker can otherwise keep serving an old build indefinitely.
-const APP_BUILD = 24;
+const APP_BUILD = 25;
 console.log('LogIt build', APP_BUILD);
 
 const BACKUP_URL = 'https://workout-log-backup.itamar-a88.workers.dev';
@@ -1662,7 +1663,8 @@ const GSLP_HISTORY_METRICS = [
   { id: 'ohp', label: 'Overhead press', unit: 'kg/hand' },
   { id: 'chinup', label: 'Chin-ups (load)', unit: 'kg' },
   { id: 'curls', label: 'Bicep curls', unit: '' },
-  { id: 'dips', label: 'Dips', unit: '' }
+  { id: 'dips', label: 'Dips', unit: '' },
+  { id: 'forearm', label: 'Forearm Workout', unit: '' }
 ];
 
 // Unlike body stats, a heavier weight is unambiguously progress for a GSLP
@@ -1689,7 +1691,7 @@ function renderGslpHistoryScreen() {
       if (metric.id === 'chinup') {
         value = (typeof l.load === 'number') ? l.load
               : (l.weighted ? l.addedWeight : null); // older logs used weighted/addedWeight
-      } else if (metric.id === 'curls' || metric.id === 'dips') {
+      } else if (metric.id === 'curls' || metric.id === 'dips' || metric.id === 'forearm') {
         const n = parseFloat(l.weight);
         if (!isNaN(n)) value = n;
       } else {
@@ -1845,13 +1847,15 @@ const GSLP_DAYS = {
     { id: 'bench', name: 'Bench press', kind: 'dumbbell' },
     { id: 'row', name: 'Dumbbell row', kind: 'dumbbell' },
     { id: 'squat', name: 'Squat', kind: 'barbell' },
-    { id: 'curls', name: 'Bicep curls', kind: 'accessory' }
+    { id: 'curls', name: 'Bicep curls', kind: 'accessory' },
+    { id: 'forearm', name: 'Forearm Workout', kind: 'weight-only' }
   ],
   B: [
     { id: 'ohp', name: 'Overhead press', kind: 'dumbbell' },
     { id: 'chinup', name: 'Chin-ups', kind: 'chinup' },
     { id: 'deadlift', name: 'Deadlift', kind: 'barbell-single' },
-    { id: 'dips', name: 'Dips', kind: 'accessory' }
+    { id: 'dips', name: 'Dips', kind: 'accessory' },
+    { id: 'forearm', name: 'Forearm Workout', kind: 'weight-only' }
   ]
 };
 
@@ -1904,6 +1908,24 @@ function renderGslpCard(lift) {
   card.dataset.id = lift.id;
   const draft = gslpDraft[lift.id];
   const lastLogged = gslpLastLogged(lift.id);
+
+  if (lift.kind === 'weight-only') {
+    card.className = 'gslp-card accessory';
+    const weightVal = gslpFieldValue(draft && draft.weight, lastLogged && lastLogged.weight);
+    card.innerHTML =
+      '<div class="gslp-done-row">' +
+        '<div class="gslp-name" style="flex:1 1 auto;">' + lift.name + '</div>' +
+        '<input class="gslp-simple-weight-input" data-field="weight" type="number" step="any" placeholder="kg" value="' + gslpEscapeAttr(weightVal) + '">' +
+        '<span class="gslp-done-wrap"><button type="button" class="done-btn' + (draft && draft.done ? ' completed' : '') + '" data-id="' + lift.id + '">' + (draft && draft.done ? DONE_CHECK_ICON : 'Done') + '</button></span>' +
+      '</div>';
+    const weightInput = card.querySelector('.gslp-simple-weight-input');
+    weightInput.addEventListener('input', () => {
+      gslpDraft[lift.id] = gslpDraft[lift.id] || {};
+      gslpDraft[lift.id].weight = weightInput.value;
+      persistGslpDraft();
+    });
+    return card;
+  }
 
   if (lift.kind === 'accessory') {
     card.className = 'gslp-card accessory';
@@ -2096,6 +2118,14 @@ function gslpHandleDone(btn) {
     return;
   }
 
+  if (lift.kind === 'weight-only') {
+    const weight = card.querySelector('[data-field="weight"]').value;
+    gslpDraft[liftId] = { weight, done: true };
+    persistGslpDraft();
+    gslpCelebrate(btn);
+    return;
+  }
+
   if (lift.kind === 'accessory') {
     const weight = card.querySelector('[data-field="weight"]').value;
     const reps = card.querySelector('[data-field="reps"]').value;
@@ -2170,6 +2200,13 @@ function gslpSaveSession() {
   GSLP_DAYS[day].forEach(lift => {
     const draft = gslpDraft[lift.id];
     if (!draft) return; // never touched this exercise
+
+    if (lift.kind === 'weight-only') {
+      if (!draft.weight) return;
+      logLifts[lift.id] = { weight: draft.weight };
+      anyLogged = true;
+      return;
+    }
 
     if (lift.kind === 'accessory') {
       if (!draft.weight && !draft.reps) return;
